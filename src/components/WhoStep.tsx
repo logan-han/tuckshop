@@ -18,6 +18,8 @@ export default function WhoStep({
   onChoose,
   onContinue,
 }: Props) {
+  const services = student?.services ?? [];
+
   return (
     <section aria-labelledby="who-title">
       <div className="step-heading">
@@ -34,29 +36,46 @@ export default function WhoStep({
           first.
         </p>
       )}
-      <div className="chips" role="group" aria-label="Student and service">
-        {students.flatMap((s) =>
-          s.services.map((svc) => {
-            const selected =
-              student?.studentKey === s.studentKey &&
-              service?.supplierServiceKey === svc.supplierServiceKey;
-            return (
+      <div className="chips" role="group" aria-label="Student">
+        {students.map((s) => (
+          <button
+            key={s.studentKey}
+            type="button"
+            className="chip"
+            aria-pressed={student?.studentKey === s.studentKey}
+            onClick={() => onChoose(s, s.services[0])}
+          >
+            <strong>{s.studentFirstName}</strong>
+            <span className="hint">{s.schoolName}</span>
+          </button>
+        ))}
+      </div>
+
+      {student && services.length > 1 && (
+        <div className="field" style={{ marginTop: '1.25rem' }}>
+          <span className="field__label" id="service-label">
+            Order from
+          </span>
+          <p className="hint">
+            Flexischools lists every food service the school runs, one-off event days included.
+            Everyday lunches come from the first one.
+          </p>
+          <div className="chips" role="group" aria-labelledby="service-label">
+            {services.map((svc) => (
               <button
-                key={`${s.studentKey}-${svc.supplierServiceKey}`}
+                key={svc.supplierServiceKey}
                 type="button"
                 className="chip"
-                aria-pressed={selected}
-                onClick={() => onChoose(s, svc)}
+                aria-pressed={service?.supplierServiceKey === svc.supplierServiceKey}
+                onClick={() => onChoose(student, svc)}
               >
-                <strong>{s.studentFirstName}</strong>
-                <span className="hint">
-                  {svc.supplierServiceName.trim()}, {s.schoolName}
-                </span>
+                {svc.supplierServiceName.trim()}
               </button>
-            );
-          }),
-        )}
-      </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {wallet && (
         <p className="hint" style={{ marginTop: '1rem' }}>
           Wallet balance {formatMoney(wallet.availableBalance)}

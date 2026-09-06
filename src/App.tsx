@@ -68,10 +68,12 @@ export default function App() {
         const withFood = list.filter((s) => s.services.length > 0);
         setStudents(withFood);
         setWallet(walletInfo);
-        if (withFood.length === 1 && withFood[0].services.length === 1) {
+        if (withFood.length === 1) {
+          // One child: pick them and their everyday service; only stop here if there is a
+          // second service worth choosing.
           setStudent(withFood[0]);
           setService(withFood[0].services[0]);
-          setStep('when');
+          if (withFood[0].services.length === 1) setStep('when');
         }
       })
       .catch((error) => {
