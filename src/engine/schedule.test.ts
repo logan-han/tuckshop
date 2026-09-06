@@ -1,4 +1,5 @@
 import {
+  TERM_PRESETS,
   addDays,
   dateOf,
   describeCount,
@@ -94,5 +95,45 @@ describe('schedule', () => {
   it('reports Melbourne’s date, not UTC’s', () => {
     // 21:56 UTC on Sunday 6 September is already Monday morning in Melbourne.
     expect(todayIso(new Date('2026-09-06T21:56:00Z'))).toBe('2026-09-07');
+  });
+
+  it('ships presets whose dates are valid, ordered and whose exclusions fall inside the term', () => {
+    for (const preset of TERM_PRESETS) {
+      expect(isIsoDate(preset.from), preset.id).toBe(true);
+      expect(isIsoDate(preset.to), preset.id).toBe(true);
+      expect(preset.from < preset.to, preset.id).toBe(true);
+      for (const { date } of preset.excluded) {
+        expect(isIsoDate(date), `${preset.id} ${date}`).toBe(true);
+        expect(date >= preset.from && date <= preset.to, `${preset.id} ${date}`).toBe(true);
+        expect(weekdayOf(date), `${preset.id} ${date} is a weekend`).toBeLessThanOrEqual(5);
+      }
+    }
+    const starts = TERM_PRESETS.map((p) => p.from);
+    expect([...starts].sort()).toEqual(starts);
+  });
+
+  it('knows the 2027 Tintern terms', () => {
+    const t4 = TERM_PRESETS.find((p) => p.id === 'tintern-2027-t4');
+    expect(t4).toMatchObject({ from: '2027-10-04', to: '2027-12-09' });
+    expect(
+      listDates({
+        from: t4!.from,
+        to: t4!.to,
+        weekdays: [1],
+        excluded: t4!.excluded.map((e) => e.date),
+      }),
+    ).toHaveLength(9);
+    expect(
+      listDates({
+        from: t4!.from,
+        to: t4!.to,
+        weekdays: [2],
+        excluded: t4!.excluded.map((e) => e.date),
+      }),
+    ).not.toContain('2027-11-02');
+    expect(weekdayOf('2027-02-02')).toBe(2);
+    expect(weekdayOf('2027-03-08')).toBe(1);
+    expect(weekdayOf('2027-06-14')).toBe(1);
+    expect(weekdayOf('2027-08-20')).toBe(5);
   });
 });

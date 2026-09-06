@@ -51,6 +51,40 @@ export const TERM_PRESETS: TermPreset[] = [
     to: '2026-12-18',
     excluded: [{ date: '2026-11-03', reason: 'Melbourne Cup Day' }],
   },
+  // 2027 from tintern.vic.edu.au/about/term-dates (fetched 2026-09-07). Term 1 starts a day
+  // earlier for Years 7, 10, 11 and 12. ANZAC Day 2027 is a Sunday and the 29 November
+  // student-free day is secondary only, so neither is excluded here.
+  {
+    id: 'tintern-2027-t1',
+    label: 'Tintern Grammar, Term 1 2027',
+    from: '2027-02-02',
+    to: '2027-03-25',
+    excluded: [{ date: '2027-03-08', reason: 'Labour Day' }],
+  },
+  {
+    id: 'tintern-2027-t2',
+    label: 'Tintern Grammar, Term 2 2027',
+    from: '2027-04-13',
+    to: '2027-06-17',
+    excluded: [{ date: '2027-06-14', reason: 'King’s Birthday' }],
+  },
+  {
+    id: 'tintern-2027-t3',
+    label: 'Tintern Grammar, Term 3 2027',
+    from: '2027-07-13',
+    to: '2027-09-16',
+    excluded: [{ date: '2027-08-20', reason: 'Mid-term break' }],
+  },
+  {
+    id: 'tintern-2027-t4',
+    label: 'Tintern Grammar, Term 4 2027',
+    from: '2027-10-04',
+    to: '2027-12-09',
+    excluded: [
+      { date: '2027-11-01', reason: 'Mid-term break' },
+      { date: '2027-11-02', reason: 'Melbourne Cup Day' },
+    ],
+  },
 ];
 
 const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
