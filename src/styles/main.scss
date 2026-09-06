@@ -558,6 +558,7 @@ a {
 
 .stepper {
   display: inline-flex;
+  justify-self: start;
   align-items: center;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
