@@ -4,15 +4,22 @@ import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
 import type { Menu, MenuItem, Student, StudentService } from '../api/types';
 import { formatMoney, missingChoices, type Selection } from '../engine/pricing';
-import { formatShort } from '../engine/schedule';
+import { formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
+import {
+  copyToAllDays,
+  daysWithoutFood,
+  withDay,
+  type SelectionsByDay,
+} from '../engine/selections';
 import ItemDialog from './ItemDialog';
 
 interface Props {
   student: Student;
   service: StudentService;
+  /** Planned dates, ascending. */
   dates: string[];
-  selections: Selection[];
-  onChange: (selections: Selection[]) => void;
+  selections: SelectionsByDay;
+  onChange: (selections: SelectionsByDay) => void;
   onBack: () => void;
   onContinue: () => void;
   onError: (error: unknown) => void;
@@ -37,7 +44,14 @@ export default function WhatStep({
   onContinue,
   onError,
 }: Props) {
-  const key = `${student.studentKey}|${service.supplierServiceKey}|${dates.join(',')}`;
+  const weekdays = useMemo(() => [...new Set(dates.map(weekdayOf))].sort(), [dates]);
+  const [activeDay, setActiveDay] = useState(weekdays[0] ?? 4);
+  const day = weekdays.includes(activeDay) ? activeDay : (weekdays[0] ?? 4);
+  const dayDates = useMemo(() => dates.filter((date) => weekdayOf(date) === day), [dates, day]);
+  const dayName = WEEKDAYS.find((w) => w.value === day)?.long ?? '';
+  const dayItems = selections[day] ?? [];
+
+  const key = `${student.studentKey}|${service.supplierServiceKey}|${dayDates.join(',')}`;
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<MenuItem | null>(null);
@@ -47,7 +61,7 @@ export default function WhatStep({
     (async () => {
       try {
         // The first few weeks are enough to find one orderable date to borrow the menu from.
-        const sample = dates.slice(0, 10);
+        const sample = dayDates.slice(0, 10);
         const fulfilment = await getFulfillmentDatesFor(
           student.studentKey,
           service.supplierServiceKey,
@@ -80,7 +94,7 @@ export default function WhatStep({
     return () => {
       cancelled = true;
     };
-  }, [key, student, service, dates, onError]);
+  }, [key, student, service, dayDates, onError]);
 
   const current = loaded && loaded.key === key ? loaded : null;
   const closeDialog = useCallback(() => setEditing(null), []);
@@ -101,20 +115,31 @@ export default function WhatStep({
       .filter((category) => category.items.length > 0);
   }, [current, query]);
 
-  const incomplete = selections.filter((s) => missingChoices(s).length > 0);
+  const empty = daysWithoutFood(selections, weekdays);
+  const incomplete = weekdays.flatMap((d) =>
+    (selections[d] ?? []).filter((s) => missingChoices(s).length > 0),
+  );
+  const otherDaysEmpty =
+    weekdays.length > 1 && empty.length === weekdays.length - 1 && dayItems.length > 0;
 
   function save(selection: Selection) {
-    const index = selections.findIndex((s) => s.item.itemKey === selection.item.itemKey);
-    onChange(
+    const index = dayItems.findIndex((s) => s.item.itemKey === selection.item.itemKey);
+    const next =
       index === -1
-        ? [...selections, selection]
-        : selections.map((s, i) => (i === index ? selection : s)),
-    );
+        ? [...dayItems, selection]
+        : dayItems.map((s, i) => (i === index ? selection : s));
+    onChange(withDay(selections, day, next));
     setEditing(null);
   }
 
   function remove(itemKey: string) {
-    onChange(selections.filter((s) => s.item.itemKey !== itemKey));
+    onChange(
+      withDay(
+        selections,
+        day,
+        dayItems.filter((s) => s.item.itemKey !== itemKey),
+      ),
+    );
     setEditing(null);
   }
 
@@ -129,6 +154,45 @@ export default function WhatStep({
         </h2>
       </div>
 
+      {weekdays.length > 1 && (
+        <div className="field">
+          <span className="field__label" id="day-tabs-label">
+            Each day can have its own lunch
+          </span>
+          <div className="chips" role="group" aria-labelledby="day-tabs-label">
+            {weekdays.map((d) => {
+              const count = selections[d]?.length ?? 0;
+              const name = WEEKDAYS.find((w) => w.value === d)?.long ?? '';
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  className="chip"
+                  aria-pressed={d === day}
+                  onClick={() => setActiveDay(d)}
+                >
+                  {name}s
+                  <span className="hint">
+                    {count === 0 ? 'nothing yet' : `${count} ${count === 1 ? 'item' : 'items'}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {otherDaysEmpty && (
+            <p className="hint">
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => onChange(copyToAllDays(selections, day, weekdays))}
+              >
+                Use {dayName}’s lunch for every day
+              </button>
+            </p>
+          )}
+        </div>
+      )}
+
       {current?.error && (
         <p className="notice notice--bad" role="alert">
           {current.error}
@@ -139,9 +203,9 @@ export default function WhatStep({
       {current?.menu && current.date && (
         <>
           <p className="hint" style={{ marginBottom: '1rem' }}>
-            Showing the {service.supplierServiceName.trim()} menu for {formatShort(current.date)}.
-            Daily specials change from day to day; every date gets checked before anything is
-            ordered.
+            Showing the {service.supplierServiceName.trim()} menu for {formatShort(current.date)}
+            {weekdays.length > 1 ? `, the first ${dayName}` : ''}. Daily specials change from day to
+            day; every date gets checked before anything is ordered.
           </p>
           <div className="field menu-search">
             <label className="visually-hidden" htmlFor="menu-search">
@@ -166,7 +230,7 @@ export default function WhatStep({
                 {category.name}
               </h3>
               {category.items.map((item) => {
-                const chosen = selections.find((s) => s.item.itemKey === item.itemKey);
+                const chosen = dayItems.find((s) => s.item.itemKey === item.itemKey);
                 const soldOut = !item.inStock;
                 return (
                   <button
@@ -202,9 +266,9 @@ export default function WhatStep({
 
       {editing && (
         <ItemDialog
-          key={editing.itemKey}
+          key={`${day}-${editing.itemKey}`}
           item={editing}
-          existing={selections.find((s) => s.item.itemKey === editing.itemKey) ?? null}
+          existing={dayItems.find((s) => s.item.itemKey === editing.itemKey) ?? null}
           onSave={save}
           onRemove={() => remove(editing.itemKey)}
           onClose={closeDialog}
@@ -218,11 +282,17 @@ export default function WhatStep({
         <button
           type="button"
           className="button"
-          disabled={selections.length === 0 || incomplete.length > 0}
+          disabled={empty.length > 0 || incomplete.length > 0}
           onClick={onContinue}
         >
           Check every date
         </button>
+        {empty.length > 0 && weekdays.length > 1 && (
+          <span className="hint">
+            Still nothing for{' '}
+            {empty.map((d) => `${WEEKDAYS.find((w) => w.value === d)?.long}s`).join(' and ')}.
+          </span>
+        )}
         {incomplete.length > 0 && (
           <span className="hint">
             Finish choosing options for {incomplete.map((s) => s.item.name).join(', ')}.

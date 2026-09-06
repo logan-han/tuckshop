@@ -13,7 +13,7 @@ import WhatStep from './components/WhatStep';
 import WhenStep from './components/WhenStep';
 import WhoStep from './components/WhoStep';
 import type { OrderOutcome } from './engine/orders';
-import type { Selection } from './engine/pricing';
+import type { SelectionsByDay } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
 import { loadPlan, planDates, retargetPlan, savePlan, type Plan } from './state/plan';
 
@@ -29,7 +29,7 @@ export default function App() {
   const [service, setService] = useState<StudentService | null>(null);
   const [fee, setFee] = useState<number | null>(null);
   const [plan, setPlan] = useState<Plan>(() => loadPlan(todayIso()));
-  const [selections, setSelections] = useState<Selection[]>([]);
+  const [selections, setSelections] = useState<SelectionsByDay>({});
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function App() {
     setStudent(null);
     setService(null);
     setFee(null);
-    setSelections([]);
+    setSelections({});
     setStep('who');
     setView('plan');
     setBanner(message);
@@ -64,7 +64,7 @@ export default function App() {
   const chooseStudent = useCallback((s: Student, svc: StudentService) => {
     setStudent(s);
     setService(svc);
-    setSelections([]);
+    setSelections({});
     setPlan((current) => {
       const next = retargetPlan(current, todayIso(), s.schoolName);
       if (next !== current) savePlan(next);
@@ -231,7 +231,7 @@ export default function App() {
                 studentName={student?.studentFirstName ?? 'your student'}
                 outcomes={outcomes}
                 onPlanAnother={() => {
-                  setSelections([]);
+                  setSelections({});
                   setStep('when');
                 }}
                 onShowOrders={() => setView('orders')}
@@ -243,12 +243,16 @@ export default function App() {
               student={student}
               service={service}
               weekdays={plan.weekdays}
-              dateCount={dates.length}
+              dates={dates}
               selections={selections}
               feePerOrder={fee}
               onRemove={
                 step === 'what'
-                  ? (index) => setSelections(selections.filter((_, i) => i !== index))
+                  ? (day, index) =>
+                      setSelections({
+                        ...selections,
+                        [day]: (selections[day] ?? []).filter((_, i) => i !== index),
+                      })
                   : undefined
               }
             />

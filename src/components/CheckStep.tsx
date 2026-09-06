@@ -13,6 +13,7 @@ import {
 } from '../engine/orders';
 import { cartTotals, formatMoney, orderAmount, type Selection } from '../engine/pricing';
 import { formatShort } from '../engine/schedule';
+import { selectionsForDate, type SelectionsByDay } from '../engine/selections';
 
 type Status = 'checking' | 'ok' | 'ordered' | 'closed' | 'cutoff' | 'unavailable' | 'error';
 
@@ -31,7 +32,7 @@ interface Props {
   student: Student;
   service: StudentService;
   dates: string[];
-  selections: Selection[];
+  selections: SelectionsByDay;
   feePerOrder: number;
   wallet: Wallet | null;
   onBack: () => void;
@@ -128,6 +129,11 @@ export default function CheckStep({
         }
 
         await mapWithConcurrency(toFetch, 4, async ({ date, dueDate }) => {
+          const chosen = selectionsForDate(selections, date);
+          if (chosen.length === 0) {
+            update(date, { status: 'unavailable', dueDate, detail: 'Nothing chosen for this day' });
+            return;
+          }
           try {
             const menu = await getMenu({
               supplierKey: service.supplierKey,
@@ -136,7 +142,7 @@ export default function CheckStep({
               schoolKey: student.schoolKey,
               dueDate,
             });
-            const result = checkAvailability(menu, selections);
+            const result = checkAvailability(menu, chosen);
             if (result.ok) {
               update(date, {
                 status: 'ok',
@@ -262,8 +268,11 @@ export default function CheckStep({
                                   ...r,
                                   include,
                                   // An "already ordered" date has no checked menu; order the plan as chosen.
-                                  selections: r.selections.length ? r.selections : selections,
-                                  amount: r.amount || orderAmount(selections),
+                                  selections: r.selections.length
+                                    ? r.selections
+                                    : selectionsForDate(selections, r.date),
+                                  amount:
+                                    r.amount || orderAmount(selectionsForDate(selections, r.date)),
                                 }
                               : r,
                           ),

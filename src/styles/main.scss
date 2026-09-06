@@ -627,6 +627,19 @@ a {
   transform: rotate(-2deg);
 }
 
+.bag__day {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  font-family: var(--font-marker);
+  font-size: var(--size-4);
+  color: var(--ink);
+
+  span {
+    color: var(--kraft-ink);
+  }
+}
+
 .bag__list {
   list-style: none;
   padding: 0;

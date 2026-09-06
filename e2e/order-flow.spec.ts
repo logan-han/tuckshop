@@ -212,4 +212,58 @@ test.describe('ordering a term of lunches', () => {
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByText('Hot Dog', { exact: false })).toBeVisible(); // mock history is static
   });
+
+  test('gives Thursdays and Fridays their own lunch', async ({ page }) => {
+    const captured = await mockFlexischools(page);
+    await signInAndPlan(page);
+    await page.getByRole('button', { name: 'Friday' }).click();
+    await expect(page.getByText('8 lunches to order')).toBeVisible();
+    await page.getByRole('button', { name: 'Choose the food' }).click();
+
+    // Thursdays get tenders, Fridays a hot dog.
+    await expect(page.getByRole('button', { name: /^Thursdays/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.getByRole('button', { name: /Chicken Tenders/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Add to the bag/ })
+      .click();
+    await expect(page.getByRole('button', { name: 'Check every date' })).toBeDisabled();
+    await expect(page.getByText('Still nothing for Fridays.')).toBeVisible();
+
+    await page.getByRole('button', { name: /^Fridays/ }).click();
+    await page.getByRole('button', { name: /Hot Dog/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Add to the bag/ })
+      .click();
+
+    const bag = page.getByRole('complementary', { name: 'Your lunch order so far' });
+    await expect(bag.getByText('Thursdays')).toBeVisible();
+    await expect(bag.getByText('Fridays')).toBeVisible();
+    await expect(bag.getByText('$40.24')).toBeVisible(); // 4 × 4.90 + 4 × 4.50 + 8 × 0.33
+
+    await page.getByRole('button', { name: 'Check every date' }).click();
+    await page.getByRole('button', { name: /Place 8 orders for \$40.24/ }).click();
+    await expect(page.getByRole('heading', { name: '8 lunches ordered for Sam' })).toBeVisible();
+
+    const body = captured.placeOrderBodies[0] as {
+      placeOrderRequests: Array<{ dueDate: string; items: Array<{ itemKey: string }> }>;
+    };
+    const byDate = Object.fromEntries(
+      body.placeOrderRequests.map((r) => [r.dueDate.slice(0, 10), r.items[0].itemKey]),
+    );
+    expect(byDate).toEqual({
+      '2036-10-09': 'tenders',
+      '2036-10-10': 'hotdog',
+      '2036-10-16': 'tenders',
+      '2036-10-17': 'hotdog',
+      '2036-10-23': 'tenders',
+      '2036-10-24': 'hotdog',
+      '2036-10-30': 'tenders',
+      '2036-10-31': 'hotdog',
+    });
+  });
 });
