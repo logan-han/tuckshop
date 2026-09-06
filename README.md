@@ -10,7 +10,7 @@ becomes one screen and one button instead of a dozen trips through the ordering 
 - Every date is checked first: canteen calendar, that day's menu and stock, orders already placed
 - One request places the lot; each order can be cancelled from here, refunded to the wallet
 
-Everything runs in the browser. Your email and password are sent only to the Cognito login service
+Private repo; the site itself is public at the address above. Everything runs in the browser. Your email and password are sent only to the Cognito login service
 that Flexischools' own site uses, and the orders go to the same ordering API their site calls. There
 is no server, no database and nothing is stored beyond your own browser tab.
 
@@ -40,6 +40,3 @@ GitHub Actions lints, tests, builds, then syncs `build/` to S3 via OIDC and inva
 Repository settings: secrets `AWS_ROLE_ARN`, `AWS_S3_BUCKET`; variable `CLOUDFRONT_DISTRIBUTION_ID`.
 AWS resource details: `docs/aws-setup.md`.
 
-## Licence
-
-MIT.

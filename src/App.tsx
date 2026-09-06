@@ -237,9 +237,8 @@ export default function App() {
 function Footnote() {
   return (
     <p className="footnote">
-      Tuckshop is an independent, open-source helper and is not affiliated with Flexischools. It
-      talks to the same services their website does, from your browser, using your own account.{' '}
-      <a href="https://github.com/logan-han/tuckshop">Source on GitHub</a>.
+      Tuckshop is an independent helper and is not affiliated with Flexischools. It talks to the
+      same services their website does, from your browser, using your own account.
     </p>
   );
 }
