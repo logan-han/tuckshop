@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import { describeAuthError, signIn, type Session } from '../api/auth';
+import { describeAuthError, rememberedEmail, signIn, type Session } from '../api/auth';
 
 interface Props {
   onSignedIn: (session: Session) => void;
 }
 
 export default function SignIn({ onSignedIn }: Props) {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => rememberedEmail());
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +17,7 @@ export default function SignIn({ onSignedIn }: Props) {
     setBusy(true);
     setError(null);
     try {
-      onSignedIn(await signIn(email, password));
+      onSignedIn(await signIn(email, password, remember));
     } catch (e) {
       setError(describeAuthError(e));
     } finally {
@@ -73,6 +74,14 @@ export default function SignIn({ onSignedIn }: Props) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+        <label className="option" style={{ marginBottom: '1rem' }}>
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+          />
+          <span>Keep me signed in on this device</span>
+        </label>
         {error && (
           <p className="notice notice--bad" role="alert">
             {error}
@@ -83,7 +92,8 @@ export default function SignIn({ onSignedIn }: Props) {
         </button>
         <p className="hint" style={{ marginTop: '1rem' }}>
           Your email and password go straight from this browser to Flexischools’ own login service
-          and nowhere else. Nothing is stored once you close the tab.
+          and nowhere else. Staying signed in keeps only the session token Flexischools hands back,
+          never the password; your browser’s password manager can hold that.
         </p>
       </form>
     </section>

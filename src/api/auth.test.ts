@@ -6,6 +6,7 @@ import {
   getIdToken,
   loadSession,
   refreshSession,
+  rememberedEmail,
   saveSession,
   signIn,
   type Session,
@@ -25,6 +26,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   clearSession();
+  window.localStorage.clear();
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -158,5 +160,50 @@ describe('decodeClaims', () => {
   it('decodes base64url payloads with non-ASCII text', () => {
     const token = jwt({ exp: 1, given_name: 'Zoë' });
     expect(decodeClaims(token)).toEqual({ exp: 1, given_name: 'Zoë' });
+  });
+});
+
+describe('keep me signed in', () => {
+  const idToken = jwt({ exp: 1_800_000_000, email: 'p@example.com' });
+  const result = {
+    AuthenticationResult: {
+      IdToken: idToken,
+      AccessToken: 'access',
+      RefreshToken: 'refresh',
+      ExpiresIn: 3600,
+    },
+  };
+
+  it('keeps the session and email in localStorage when asked', async () => {
+    fetchMock.mockResolvedValueOnce(cognitoOk(result));
+    const session = await signIn('p@example.com', 'secret', true);
+    expect(session.remember).toBe(true);
+    expect(window.localStorage.getItem('tuckshop.session')).toContain('"refresh"');
+    expect(window.sessionStorage.getItem('tuckshop.session')).toBeNull();
+    expect(rememberedEmail()).toBe('p@example.com');
+    expect(loadSession()).toEqual(session);
+  });
+
+  it('keeps nothing beyond the tab otherwise, and forgets a remembered email', async () => {
+    window.localStorage.setItem('tuckshop.email', 'old@example.com');
+    fetchMock.mockResolvedValueOnce(cognitoOk(result));
+    await signIn('p@example.com', 'secret');
+    expect(window.sessionStorage.getItem('tuckshop.session')).toContain('"refresh"');
+    expect(window.localStorage.getItem('tuckshop.session')).toBeNull();
+    expect(rememberedEmail()).toBe('');
+  });
+
+  it('refreshes into the same store and clears both on sign out', async () => {
+    fetchMock.mockResolvedValueOnce(cognitoOk(result));
+    const session = await signIn('p@example.com', 'secret', true);
+    fetchMock.mockResolvedValueOnce(
+      cognitoOk({ AuthenticationResult: { IdToken: idToken, AccessToken: 'a2', ExpiresIn: 3600 } }),
+    );
+    const refreshed = await refreshSession(session);
+    expect(refreshed.remember).toBe(true);
+    expect(window.localStorage.getItem('tuckshop.session')).toContain('"a2"');
+    clearSession();
+    expect(loadSession()).toBeNull();
+    expect(window.localStorage.getItem('tuckshop.session')).toBeNull();
   });
 });

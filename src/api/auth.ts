@@ -1,10 +1,12 @@
 // Sign-in against the Cognito user pool the Flexischools portals use. The portal's own
 // client id is public (it ships in their JS bundle) and the pool allows the plain
-// USER_PASSWORD_AUTH flow, so no SRP dance is needed. Tokens live in sessionStorage only.
+// USER_PASSWORD_AUTH flow, so no SRP dance is needed. Tokens live in sessionStorage, or in
+// localStorage when the person asks to stay signed in; the password itself is never kept.
 
 const COGNITO_URL = 'https://cognito-idp.ap-southeast-2.amazonaws.com/';
 export const COGNITO_CLIENT_ID = '1g1a80gfo3ovuq75c8fqjrg3ma';
 const STORAGE_KEY = 'tuckshop.session';
+const EMAIL_KEY = 'tuckshop.email';
 const REFRESH_MARGIN_MS = 60_000;
 
 export interface Session {
@@ -17,6 +19,8 @@ export interface Session {
   givenName: string;
   /** Flexischools' own user key (custom:toca_user_key), used by the GraphQL BFF. */
   userKey: string;
+  /** Survive closing the tab (localStorage) rather than ending with it (sessionStorage). */
+  remember?: boolean;
 }
 
 export class AuthError extends Error {
@@ -94,7 +98,7 @@ export function decodeClaims(jwt: string): IdTokenClaims {
   return JSON.parse(new TextDecoder().decode(bytes)) as IdTokenClaims;
 }
 
-function toSession(result: CognitoAuthResult, refreshToken: string): Session {
+function toSession(result: CognitoAuthResult, refreshToken: string, remember: boolean): Session {
   if (!result.IdToken || !result.AccessToken) {
     throw new AuthError('UnknownError', 'Flexischools did not return a session.');
   }
@@ -107,10 +111,11 @@ function toSession(result: CognitoAuthResult, refreshToken: string): Session {
     email: claims.email ?? '',
     givenName: claims.given_name ?? '',
     userKey: claims['custom:toca_user_key'] ?? '',
+    remember,
   };
 }
 
-export async function signIn(email: string, password: string): Promise<Session> {
+export async function signIn(email: string, password: string, remember = false): Promise<Session> {
   const data = await cognito('InitiateAuth', {
     AuthFlow: 'USER_PASSWORD_AUTH',
     AuthParameters: { USERNAME: email.trim(), PASSWORD: password },
@@ -122,8 +127,13 @@ export async function signIn(email: string, password: string): Promise<Session> 
       `Unsupported sign-in challenge: ${data.ChallengeName ?? 'unknown'}`,
     );
   }
-  const session = toSession(data.AuthenticationResult, data.AuthenticationResult.RefreshToken);
+  const session = toSession(
+    data.AuthenticationResult,
+    data.AuthenticationResult.RefreshToken,
+    remember,
+  );
   saveSession(session);
+  rememberEmail(remember ? session.email : null);
   return session;
 }
 
@@ -136,41 +146,78 @@ export async function refreshSession(current: Session): Promise<Session> {
   if (!data.AuthenticationResult) {
     throw new AuthError('signed_out', 'Your Flexischools session has expired. Sign in again.');
   }
-  const session = toSession(data.AuthenticationResult, current.refreshToken);
+  const session = toSession(data.AuthenticationResult, current.refreshToken, !!current.remember);
   saveSession(session);
   return session;
 }
 
-function storage(): Storage | null {
+function stores(): Storage[] {
+  const found: Storage[] = [];
+  for (const name of ['sessionStorage', 'localStorage'] as const) {
+    try {
+      const store = window[name];
+      if (store) found.push(store);
+    } catch {
+      // blocked storage is simply skipped
+    }
+  }
+  return found;
+}
+
+function storeFor(remember: boolean): Storage | undefined {
   try {
-    return window.sessionStorage;
+    return remember ? window.localStorage : window.sessionStorage;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
 export function loadSession(): Session | null {
-  try {
-    const raw = storage()?.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
+  for (const store of stores()) {
+    try {
+      const raw = store.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw) as Session;
+    } catch {
+      // unreadable entry; try the next store
+    }
   }
+  return null;
 }
 
 export function saveSession(session: Session): void {
+  clearSession();
   try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(session));
+    storeFor(!!session.remember)?.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch {
     // Private mode or storage disabled: the session simply lives for this page load.
   }
 }
 
 export function clearSession(): void {
+  for (const store of stores()) {
+    try {
+      store.removeItem(STORAGE_KEY);
+    } catch {
+      // nothing to clear
+    }
+  }
+}
+
+/** The email to prefill on the sign-in form, kept only when "keep me signed in" was ticked. */
+export function rememberedEmail(): string {
   try {
-    storage()?.removeItem(STORAGE_KEY);
+    return window.localStorage.getItem(EMAIL_KEY) ?? '';
   } catch {
-    // nothing to clear
+    return '';
+  }
+}
+
+export function rememberEmail(email: string | null): void {
+  try {
+    if (email) window.localStorage.setItem(EMAIL_KEY, email);
+    else window.localStorage.removeItem(EMAIL_KEY);
+  } catch {
+    // not remembered, nothing lost
   }
 }
 
