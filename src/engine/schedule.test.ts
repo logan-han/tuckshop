@@ -1,6 +1,7 @@
 import {
   TERM_PRESETS,
   addDays,
+  presetsFor,
   dateOf,
   describeCount,
   formatLong,
@@ -111,8 +112,14 @@ describe('schedule', () => {
         expect(weekdayOf(date), `${preset.id} ${date} is a weekend`).toBeLessThanOrEqual(5);
       }
     }
-    const starts = TERM_PRESETS.map((p) => p.from);
-    expect([...starts].sort()).toEqual(starts);
+    for (const school of new Set(TERM_PRESETS.map((p) => p.school))) {
+      const starts = TERM_PRESETS.filter((p) => p.school === school).map((p) => p.from);
+      expect([...starts].sort(), String(school)).toEqual(starts);
+    }
+    expect(presetsFor('Tintern Grammar').every((p) => p.school === 'Tintern Grammar')).toBe(true);
+    expect(presetsFor('Tintern Grammar').map((p) => p.id)).toContain('tintern-2027-t4');
+    expect(presetsFor('Mooroolbark College').every((p) => p.school === null)).toBe(true);
+    expect(presetsFor(null).map((p) => p.id)).toContain('vic-2028-t4');
   });
 
   it('knows the 2027 Tintern terms', () => {

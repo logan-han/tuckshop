@@ -1,4 +1,4 @@
-import { listDates, TERM_PRESETS, type ExcludedDate } from '../engine/schedule';
+import { listDates, presetsFor, TERM_PRESETS, type ExcludedDate } from '../engine/schedule';
 
 export interface Plan {
   weekdays: number[];
@@ -11,8 +11,14 @@ export interface Plan {
 
 const STORAGE_KEY = 'tuckshop.plan';
 
-export function defaultPlan(today: string): Plan {
-  const preset = TERM_PRESETS.find((p) => p.to >= today) ?? TERM_PRESETS[TERM_PRESETS.length - 1];
+/** The current or next term for this school, falling back to the last one we know. */
+export function currentPreset(today: string, schoolName?: string | null) {
+  const presets = presetsFor(schoolName);
+  return presets.find((p) => p.to >= today) ?? presets[presets.length - 1];
+}
+
+export function defaultPlan(today: string, schoolName?: string | null): Plan {
+  const preset = currentPreset(today, schoolName);
   return {
     weekdays: [4],
     presetId: preset.id,
@@ -28,12 +34,22 @@ export function applyPreset(plan: Plan, presetId: string): Plan {
   return { ...plan, presetId, from: preset.from, to: preset.to, excluded: preset.excluded };
 }
 
-export function loadPlan(today: string): Plan {
+/**
+ * Keeps a plan pointed at a term the student's school actually has. A custom range is left
+ * alone; a preset from another school becomes this school's current term.
+ */
+export function retargetPlan(plan: Plan, today: string, schoolName?: string | null): Plan {
+  if (plan.presetId === 'custom') return plan;
+  if (presetsFor(schoolName).some((p) => p.id === plan.presetId)) return plan;
+  return applyPreset(plan, currentPreset(today, schoolName).id);
+}
+
+export function loadPlan(today: string, schoolName?: string | null): Plan {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultPlan(today);
+    if (!raw) return defaultPlan(today, schoolName);
     const saved = JSON.parse(raw) as Partial<Plan>;
-    const base = defaultPlan(today);
+    const base = defaultPlan(today, schoolName);
     const plan: Plan = {
       weekdays:
         Array.isArray(saved.weekdays) && saved.weekdays.length ? saved.weekdays : base.weekdays,
@@ -45,7 +61,7 @@ export function loadPlan(today: string): Plan {
     // A saved range that has completely passed is stale; start from the current term instead.
     return plan.to < today ? { ...base, weekdays: plan.weekdays } : plan;
   } catch {
-    return defaultPlan(today);
+    return defaultPlan(today, schoolName);
   }
 }
 

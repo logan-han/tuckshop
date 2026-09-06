@@ -14,8 +14,8 @@ import WhenStep from './components/WhenStep';
 import WhoStep from './components/WhoStep';
 import type { OrderOutcome } from './engine/orders';
 import type { Selection } from './engine/pricing';
-import { todayIso } from './engine/schedule';
-import { loadPlan, planDates, savePlan, type Plan } from './state/plan';
+import { presetsFor, todayIso } from './engine/schedule';
+import { loadPlan, planDates, retargetPlan, savePlan, type Plan } from './state/plan';
 
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
 
@@ -60,6 +60,18 @@ export default function App() {
     getWallet().then(setWallet).catch(handleError);
   }, [handleError]);
 
+  /** Selecting a student also points the plan at a term their school actually has. */
+  const chooseStudent = useCallback((s: Student, svc: StudentService) => {
+    setStudent(s);
+    setService(svc);
+    setSelections([]);
+    setPlan((current) => {
+      const next = retargetPlan(current, todayIso(), s.schoolName);
+      if (next !== current) savePlan(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
@@ -86,8 +98,7 @@ export default function App() {
         if (withFood.length === 1) {
           // One child: pick them and their everyday service; only stop here if there is a
           // second service worth choosing.
-          setStudent(withFood[0]);
-          setService(withFood[0].services[0]);
+          chooseStudent(withFood[0], withFood[0].services[0]);
           if (withFood[0].services.length === 1) setStep('when');
         }
       })
@@ -99,7 +110,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session, handleError]);
+  }, [session, handleError, chooseStudent]);
 
   useEffect(() => {
     if (!student || !service) return;
@@ -167,11 +178,7 @@ export default function App() {
                 student={student}
                 service={service}
                 wallet={wallet}
-                onChoose={(s, svc) => {
-                  setStudent(s);
-                  setService(svc);
-                  setSelections([]);
-                }}
+                onChoose={chooseStudent}
                 onContinue={() => setStep('when')}
               />
             )}
@@ -179,6 +186,7 @@ export default function App() {
             {step === 'when' && (
               <WhenStep
                 plan={plan}
+                presets={presetsFor(student?.schoolName)}
                 dates={dates}
                 onChange={updatePlan}
                 onBack={() => setStep('who')}

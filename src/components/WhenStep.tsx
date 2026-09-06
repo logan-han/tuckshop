@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { formatShort, isIsoDate, TERM_PRESETS, WEEKDAYS, weekdayOf } from '../engine/schedule';
+import { formatShort, isIsoDate, WEEKDAYS, weekdayOf, type TermPreset } from '../engine/schedule';
 import { applyPreset, type Plan } from '../state/plan';
 
 interface Props {
   plan: Plan;
+  presets: TermPreset[];
   dates: string[];
   onChange: (plan: Plan) => void;
   onBack: () => void;
   onContinue: () => void;
 }
 
-export default function WhenStep({ plan, dates, onChange, onBack, onContinue }: Props) {
+export default function WhenStep({ plan, presets, dates, onChange, onBack, onContinue }: Props) {
   const [newExclusion, setNewExclusion] = useState('');
 
   function toggleWeekday(value: number) {
@@ -73,7 +74,7 @@ export default function WhenStep({ plan, dates, onChange, onBack, onContinue }: 
           value={plan.presetId}
           onChange={(e) => onChange(applyPreset(plan, e.target.value))}
         >
-          {TERM_PRESETS.map((preset) => (
+          {presets.map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.label}
             </option>
