@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import {
   availableServices,
   cognitoSuccess,
+  secondStudent,
   emptyHistory,
   fulfillmentWeek,
   historyWithOrder,
@@ -26,7 +27,7 @@ interface Captured {
 
 async function mockFlexischools(
   page: Page,
-  options: { soldOutOn?: string; alreadyOrderedOn?: string } = {},
+  options: { soldOutOn?: string; alreadyOrderedOn?: string; twoStudents?: boolean } = {},
 ) {
   const captured: Captured = { placeOrderBodies: [], menuDueDates: [] };
 
@@ -47,7 +48,9 @@ async function mockFlexischools(
     const path = url.pathname;
     const method = route.request().method();
 
-    if (path.endsWith('/service-categories/1/students')) return json(route, students);
+    if (path.endsWith('/service-categories/1/students')) {
+      return json(route, options.twoStudents ? [...students, secondStudent] : students);
+    }
     if (path.endsWith('/payments/user-account')) return json(route, wallet);
     if (path.endsWith('/available-services')) return json(route, availableServices);
     if (path.endsWith('/orderfee')) return json(route, orderFee);
@@ -265,5 +268,59 @@ test.describe('ordering a term of lunches', () => {
       '2036-10-30': 'tenders',
       '2036-10-31': 'hotdog',
     });
+  });
+
+  test('with two children, asks who first and places orders against the chosen one', async ({
+    page,
+  }) => {
+    const captured = await mockFlexischools(page, { twoStudents: true });
+    await page.goto('/');
+    await page.getByLabel('Email').fill('parent@example.com');
+    await page.getByLabel('Password').fill('secret');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Who is this lunch for?' })).toBeVisible();
+    const students = page.getByRole('group', { name: 'Student' });
+    await expect(students.getByRole('button')).toHaveCount(2);
+    await expect(page.getByRole('button', { name: 'Choose the days' })).toBeDisabled();
+
+    await students.getByRole('button', { name: /Alex/ }).click();
+    const bag = page.getByRole('complementary', { name: 'Your lunch order so far' });
+    await expect(bag.getByText('Alex')).toBeVisible();
+    await page.getByRole('button', { name: 'Choose the days' }).click();
+
+    // A school without its own presets gets the government school terms.
+    await expect(
+      page.getByRole('option', { name: /Victorian government schools/ }).first(),
+    ).toBeAttached();
+    await expect(page.getByRole('option', { name: /Tintern/ })).toHaveCount(0);
+    await page.getByLabel('Term').selectOption('custom');
+    await page.getByLabel('From').fill(FROM);
+    await page.getByLabel('To').fill(TO);
+    await page.getByRole('button', { name: 'Choose the food' }).click();
+    await page.getByRole('button', { name: /Chicken Tenders/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Add to the bag/ })
+      .click();
+    await page.getByRole('button', { name: 'Check every date' }).click();
+    await page.getByRole('button', { name: /Place 4 orders/ }).click();
+    await expect(page.getByRole('heading', { name: '4 lunches ordered for Alex' })).toBeVisible();
+
+    const body = captured.placeOrderBodies[0] as {
+      placeOrderRequests: Array<{
+        studentKey: string;
+        supplierServiceKey: string;
+        supplierKey: string;
+      }>;
+    };
+    expect(body.placeOrderRequests).toHaveLength(4);
+    for (const request of body.placeOrderRequests) {
+      expect(request).toMatchObject({
+        studentKey: 'student-2',
+        supplierServiceKey: 'lunch-2',
+        supplierKey: 'canteen-2',
+      });
+    }
   });
 });

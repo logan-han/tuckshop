@@ -25,6 +25,27 @@ export const cognitoSuccess = {
   ChallengeParameters: {},
 };
 
+/** A second child at a government school, for the two-student flow. */
+export const secondStudent = {
+  studentKey: 'student-2',
+  studentId: 2,
+  isClassValid: true,
+  studentFirstName: 'Alex',
+  studentLastName: 'Example',
+  schoolKey: 'school-2',
+  schoolName: 'Example Primary School',
+  schoolSiteKey: 'site-2',
+  services: [
+    {
+      supplierServiceKey: 'lunch-2',
+      supplierServiceName: 'Lunch',
+      supplierKey: 'canteen-2',
+      supplierSiteKey: 'canteen-2-site',
+      supplierSiteTimeRegionKey: 'melbourne',
+    },
+  ],
+};
+
 export const students = [
   {
     studentKey: 'student-1',
@@ -70,6 +91,23 @@ export const orderFee = { fee: 0.33, feeTax: 0.03 };
 
 /** available-services only echoes services that are taking orders; a finished event day is absent. */
 export const availableServices = [
+  {
+    supplierServiceKey: 'lunch-2',
+    serviceName: 'Lunch',
+    cutOffTime: '2036-10-06T09:00:00',
+    cutOffTimeUtc: '2036-10-05T23:00:00',
+    nextOrderFulfillmentDate: '2036-10-06T12:40:00',
+    nextOrderFulfillmentDateUtc: '2036-10-06T02:40:00',
+    image: null,
+    description: 'Order by 9am',
+    supplierKey: 'canteen-2',
+    schoolSiteKey: 'site-2',
+    schoolKey: 'school-2',
+    supplierSiteTimeRegionKey: 'melbourne',
+    supplierSiteKey: 'canteen-2-site',
+    showDistributionTime: true,
+    supplierDistributionTimeKey: 'dist-2',
+  },
   {
     supplierServiceKey: 'lunch',
     serviceName: 'Lunch',

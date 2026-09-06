@@ -151,16 +151,25 @@ export function cancelOrder(orderKey: string): Promise<void> {
  * back missing here.
  */
 export function getAvailableServices(students: Student[]): Promise<AvailableService[]> {
+  const seen = new Set<string>();
   const body = students.flatMap((student) =>
-    student.services.map((service) => ({
-      supplierServiceKey: service.supplierServiceKey,
-      supplierServiceName: service.supplierServiceName,
-      supplierKey: service.supplierKey,
-      supplierSiteKey: service.supplierSiteKey,
-      supplierSiteTimeRegionKey: service.supplierSiteTimeRegionKey,
-      schoolKey: student.schoolKey,
-      schoolSiteKey: student.schoolSiteKey,
-    })),
+    student.services
+      .filter((service) => {
+        // Siblings at one school share services; ask about each service once.
+        const key = `${student.schoolKey}|${service.supplierServiceKey}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((service) => ({
+        supplierServiceKey: service.supplierServiceKey,
+        supplierServiceName: service.supplierServiceName,
+        supplierKey: service.supplierKey,
+        supplierSiteKey: service.supplierSiteKey,
+        supplierSiteTimeRegionKey: service.supplierSiteTimeRegionKey,
+        schoolKey: student.schoolKey,
+        schoolSiteKey: student.schoolSiteKey,
+      })),
   );
   return call('v1.0', 'available-services', { method: 'POST', body });
 }

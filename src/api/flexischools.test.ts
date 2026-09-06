@@ -171,4 +171,40 @@ describe('getAvailableServices', () => {
       },
     ]);
   });
+
+  it('asks about a shared service once for siblings at the same school', async () => {
+    fetchMock.mockResolvedValueOnce(ok([]));
+    const lunch = {
+      supplierServiceKey: 'lunch',
+      supplierServiceName: 'Lunch',
+      supplierKey: 'canteen',
+      supplierSiteKey: 'canteen-site',
+      supplierSiteTimeRegionKey: 'melbourne',
+    };
+    const base = {
+      studentId: 1,
+      isClassValid: true,
+      studentLastName: 'Example',
+      schoolKey: 'school-1',
+      schoolName: 'Example Grammar',
+      schoolSiteKey: 'site-1',
+      services: [lunch],
+    };
+    await getAvailableServices([
+      { ...base, studentKey: 's1', studentFirstName: 'Sam' },
+      { ...base, studentKey: 's2', studentFirstName: 'Alex' },
+      {
+        ...base,
+        studentKey: 's3',
+        studentFirstName: 'Kim',
+        schoolKey: 'school-2',
+        schoolSiteKey: 'site-2',
+      },
+    ]);
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent.map((entry: { schoolKey: string }) => entry.schoolKey)).toEqual([
+      'school-1',
+      'school-2',
+    ]);
+  });
 });
