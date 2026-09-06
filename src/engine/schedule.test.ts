@@ -87,9 +87,12 @@ describe('schedule', () => {
 
   it('describes the plan in words', () => {
     expect(describeCount(9, [4])).toBe('9 Thursdays');
-    expect(describeCount(4, [1, 5])).toBe('4 Mondays and Fridays');
-    expect(describeCount(3, [1, 3, 5])).toBe('3 Mondays, Wednesdays and Fridays');
-    expect(describeCount(0, [])).toBe('0 days');
+    expect(describeCount(1, [4])).toBe('1 Thursday');
+    expect(describeCount(8, [1, 2, 3, 4])).toBe('8 lunches, Mon to Thu');
+    expect(describeCount(4, [1, 5])).toBe('4 lunches, Mon and Fri');
+    expect(describeCount(3, [1, 3, 5])).toBe('3 lunches, Mon, Wed and Fri');
+    expect(describeCount(0, [])).toBe('0 lunches');
+    expect(describeCount(1, [2, 3])).toBe('1 lunch, Tue to Wed');
   });
 
   it('reports Melbourne’s date, not UTC’s', () => {

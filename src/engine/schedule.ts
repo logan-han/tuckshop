@@ -203,13 +203,14 @@ export function dateOf(localDateTime: string): string {
   return localDateTime.slice(0, 10);
 }
 
-/** "9 Thursdays" / "4 Mondays and Fridays" */
+/** "9 Thursdays", "8 lunches, Mon to Thu", "3 lunches, Mon, Wed and Fri" */
 export function describeCount(count: number, weekdays: Iterable<number>): string {
-  const names = WEEKDAYS.filter((w) => new Set(weekdays).has(w.value)).map((w) => `${w.long}s`);
-  if (names.length === 0) return `${count} days`;
-  const joined =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `${count} ${joined}`;
+  const chosen = WEEKDAYS.filter((w) => new Set(weekdays).has(w.value));
+  const lunches = `${count} ${count === 1 ? 'lunch' : 'lunches'}`;
+  if (chosen.length === 0) return lunches;
+  if (chosen.length === 1) return `${count} ${chosen[0].long}${count === 1 ? '' : 's'}`;
+  const consecutive = chosen.every((w, i) => i === 0 || w.value === chosen[i - 1].value + 1);
+  if (consecutive) return `${lunches}, ${chosen[0].short} to ${chosen[chosen.length - 1].short}`;
+  const names = chosen.map((w) => w.short);
+  return `${lunches}, ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
