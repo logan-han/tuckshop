@@ -317,7 +317,11 @@ export default function CheckStep({
       {shortfall > 0 && (
         <p className="notice notice--warn" role="alert">
           The wallet is {formatMoney(shortfall)} short. Top it up in{' '}
-          <a href="https://user.flexischools.com.au/home" target="_blank" rel="noreferrer">
+          <a
+            href="https://user.flexischools.com.au/login?returnUrl=/wallet-topup"
+            target="_blank"
+            rel="noreferrer"
+          >
             Flexischools
           </a>{' '}
           first, or untick some dates.
