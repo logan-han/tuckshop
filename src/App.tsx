@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { clearSession, loadSession, type Session } from './api/auth';
 import { describeError, needsSignIn } from './api/errors';
-import { getOrderFee, getStudents, getWallet } from './api/flexischools';
-import type { Student, StudentService, Wallet } from './api/types';
+import { getAvailableServices, getOrderFee, getStudents, getWallet } from './api/flexischools';
+import type { AvailableService, Student, StudentService, Wallet } from './api/types';
 import CheckStep from './components/CheckStep';
 import DoneStep from './components/DoneStep';
 import LunchBag from './components/LunchBag';
@@ -23,6 +23,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [view, setView] = useState<View>('plan');
   const [students, setStudents] = useState<Student[] | null>(null);
+  const [available, setAvailable] = useState<AvailableService[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [student, setStudent] = useState<Student | null>(null);
   const [service, setService] = useState<StudentService | null>(null);
@@ -63,9 +64,23 @@ export default function App() {
     if (!session) return;
     let cancelled = false;
     Promise.all([getStudents(), getWallet()])
-      .then(([list, walletInfo]) => {
+      .then(async ([list, walletInfo]) => {
+        const listed = list.filter((s) => s.services.length > 0);
+        // Flexischools leaves finished one-off event services attached to the student, so keep
+        // only the services the canteen is actually taking orders for.
+        const open = await getAvailableServices(listed).catch(() => null);
         if (cancelled) return;
-        const withFood = list.filter((s) => s.services.length > 0);
+        const withFood = open
+          ? listed
+              .map((s) => ({
+                ...s,
+                services: s.services.filter((svc) =>
+                  open.some((a) => a.supplierServiceKey === svc.supplierServiceKey),
+                ),
+              }))
+              .filter((s) => s.services.length > 0)
+          : listed;
+        setAvailable(open ?? []);
         setStudents(withFood);
         setWallet(walletInfo);
         if (withFood.length === 1) {
@@ -148,6 +163,7 @@ export default function App() {
             {students !== null && step === 'who' && (
               <WhoStep
                 students={students}
+                available={available}
                 student={student}
                 service={service}
                 wallet={wallet}

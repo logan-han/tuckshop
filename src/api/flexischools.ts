@@ -1,5 +1,6 @@
 import { getIdToken } from './auth';
 import type {
+  AvailableService,
   FulfillmentDate,
   Menu,
   OrderDetail,
@@ -142,4 +143,24 @@ export function placeOrders(body: PlaceOrdersBody): Promise<PlaceOrdersResponse>
 /** Cancels a placed order; Flexischools refunds it to the wallet. */
 export function cancelOrder(orderKey: string): Promise<void> {
   return call('v1.0', `orders/${orderKey}`, { method: 'DELETE' });
+}
+
+/**
+ * Which of a student's listed services are actually taking orders. Flexischools keeps finished
+ * one-off event services (a "French Day" from last term) attached to the student; those come
+ * back missing here.
+ */
+export function getAvailableServices(students: Student[]): Promise<AvailableService[]> {
+  const body = students.flatMap((student) =>
+    student.services.map((service) => ({
+      supplierServiceKey: service.supplierServiceKey,
+      supplierServiceName: service.supplierServiceName,
+      supplierKey: service.supplierKey,
+      supplierSiteKey: service.supplierSiteKey,
+      supplierSiteTimeRegionKey: service.supplierSiteTimeRegionKey,
+      schoolKey: student.schoolKey,
+      schoolSiteKey: student.schoolSiteKey,
+    })),
+  );
+  return call('v1.0', 'available-services', { method: 'POST', body });
 }

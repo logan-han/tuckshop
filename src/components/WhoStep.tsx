@@ -1,8 +1,10 @@
-import type { Student, StudentService, Wallet } from '../api/types';
+import type { AvailableService, Student, StudentService, Wallet } from '../api/types';
 import { formatMoney } from '../engine/pricing';
 
 interface Props {
   students: Student[];
+  /** What the canteen says about each service, e.g. "Order by 8.30am". */
+  available?: AvailableService[];
   student: Student | null;
   service: StudentService | null;
   wallet: Wallet | null;
@@ -12,6 +14,7 @@ interface Props {
 
 export default function WhoStep({
   students,
+  available = [],
   student,
   service,
   wallet,
@@ -57,21 +60,25 @@ export default function WhoStep({
             Order from
           </span>
           <p className="hint">
-            Flexischools lists every food service the school runs, one-off event days included.
-            Everyday lunches come from the first one.
+            The canteen is taking orders for more than one service. Everyday lunches come from the
+            first one; the others are special days.
           </p>
           <div className="chips" role="group" aria-labelledby="service-label">
-            {services.map((svc) => (
-              <button
-                key={svc.supplierServiceKey}
-                type="button"
-                className="chip"
-                aria-pressed={service?.supplierServiceKey === svc.supplierServiceKey}
-                onClick={() => onChoose(student, svc)}
-              >
-                {svc.supplierServiceName.trim()}
-              </button>
-            ))}
+            {services.map((svc) => {
+              const info = available.find((a) => a.supplierServiceKey === svc.supplierServiceKey);
+              return (
+                <button
+                  key={svc.supplierServiceKey}
+                  type="button"
+                  className="chip"
+                  aria-pressed={service?.supplierServiceKey === svc.supplierServiceKey}
+                  onClick={() => onChoose(student, svc)}
+                >
+                  {svc.supplierServiceName.trim()}
+                  {info?.description && <span className="hint">{info.description}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

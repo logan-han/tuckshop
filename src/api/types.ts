@@ -239,3 +239,17 @@ export interface PlaceOrdersResponse {
   ordersResponse: PlacedOrderResponse[];
   cartError: PlaceOrderError | null;
 }
+
+/** A service the canteen is currently taking orders for (POST available-services). */
+export interface AvailableService {
+  supplierServiceKey: string;
+  serviceName: string;
+  /** Local date-time of the next cut-off, e.g. "2026-09-08T08:30:00" */
+  cutOffTime: string;
+  nextOrderFulfillmentDate: string;
+  /** Canteen's own wording, e.g. "Order by 8.30am" */
+  description: string | null;
+  supplierKey: string;
+  schoolKey: string;
+  supplierDistributionTimeKey: string;
+}

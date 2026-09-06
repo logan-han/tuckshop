@@ -54,6 +54,22 @@ function respond(url: string): Response {
       JSON.stringify({ accountKey: 'a', availableBalance: 12.44, topUpAmountOptions: [] }),
     );
   }
+  if (url.endsWith('/available-services')) {
+    return new Response(
+      JSON.stringify([
+        {
+          supplierServiceKey: 'lunch',
+          serviceName: 'Lunch',
+          cutOffTime: '2036-10-06T08:30:00',
+          nextOrderFulfillmentDate: '2036-10-06T12:40:00',
+          description: 'Order by 8.30am',
+          supplierKey: 'canteen',
+          schoolKey: 'school-1',
+          supplierDistributionTimeKey: 'dist',
+        },
+      ]),
+    );
+  }
   if (url.endsWith('/orderfee')) return new Response(JSON.stringify({ fee: 0.33, feeTax: 0.03 }));
   return new Response('not mocked', { status: 500 });
 }

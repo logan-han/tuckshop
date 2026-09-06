@@ -2,6 +2,7 @@ import { saveSession } from './auth';
 import {
   ApiError,
   cancelOrder,
+  getAvailableServices,
   getFulfillmentDates,
   getMenu,
   getOrderHistory,
@@ -126,5 +127,48 @@ describe('flexischools client', () => {
     } finally {
       Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
     }
+  });
+});
+
+describe('getAvailableServices', () => {
+  it('asks about every listed service with the student’s school keys', async () => {
+    fetchMock.mockResolvedValueOnce(ok([{ supplierServiceKey: 'lunch' }]));
+    const student = {
+      studentKey: 's1',
+      studentId: 1,
+      isClassValid: true,
+      studentFirstName: 'Sam',
+      studentLastName: 'Example',
+      schoolKey: 'school-1',
+      schoolName: 'Example Grammar',
+      schoolSiteKey: 'site-1',
+      services: [
+        {
+          supplierServiceKey: 'lunch',
+          supplierServiceName: 'Lunch',
+          supplierKey: 'canteen',
+          supplierSiteKey: 'canteen-site',
+          supplierSiteTimeRegionKey: 'melbourne',
+        },
+      ],
+    };
+    const result = await getAvailableServices([student]);
+    expect(result).toEqual([{ supplierServiceKey: 'lunch' }]);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url.toString()).toBe(
+      'https://bffordering.flexischools.com.au/api/v1.0/available-services',
+    );
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual([
+      {
+        supplierServiceKey: 'lunch',
+        supplierServiceName: 'Lunch',
+        supplierKey: 'canteen',
+        supplierSiteKey: 'canteen-site',
+        supplierSiteTimeRegionKey: 'melbourne',
+        schoolKey: 'school-1',
+        schoolSiteKey: 'site-1',
+      },
+    ]);
   });
 });

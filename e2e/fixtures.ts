@@ -43,6 +43,13 @@ export const students = [
         supplierSiteKey: 'canteen-site',
         supplierSiteTimeRegionKey: 'melbourne',
       },
+      {
+        supplierServiceKey: 'old-event',
+        supplierServiceName: 'Book Week Lunch ',
+        supplierKey: 'canteen',
+        supplierSiteKey: 'canteen-site',
+        supplierSiteTimeRegionKey: 'melbourne',
+      },
     ],
   },
 ];
@@ -60,6 +67,27 @@ export const wallet = {
 };
 
 export const orderFee = { fee: 0.33, feeTax: 0.03 };
+
+/** available-services only echoes services that are taking orders; a finished event day is absent. */
+export const availableServices = [
+  {
+    supplierServiceKey: 'lunch',
+    serviceName: 'Lunch',
+    cutOffTime: '2036-10-06T08:30:00',
+    cutOffTimeUtc: '2036-10-05T22:30:00',
+    nextOrderFulfillmentDate: '2036-10-06T12:40:00',
+    nextOrderFulfillmentDateUtc: '2036-10-06T02:40:00',
+    image: null,
+    description: 'Order by 8.30am',
+    supplierKey: 'canteen',
+    schoolSiteKey: 'site-1',
+    schoolKey: 'school-1',
+    supplierSiteTimeRegionKey: 'melbourne',
+    supplierSiteKey: 'canteen-site',
+    showDistributionTime: true,
+    supplierDistributionTimeKey: 'dist',
+  },
+];
 
 /** Five consecutive days from a Monday, in the API's local date-time format. */
 export function fulfillmentWeek(monday: string) {

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import {
+  availableServices,
   cognitoSuccess,
   emptyHistory,
   fulfillmentWeek,
@@ -48,6 +49,7 @@ async function mockFlexischools(
 
     if (path.endsWith('/service-categories/1/students')) return json(route, students);
     if (path.endsWith('/payments/user-account')) return json(route, wallet);
+    if (path.endsWith('/available-services')) return json(route, availableServices);
     if (path.endsWith('/orderfee')) return json(route, orderFee);
     if (path.endsWith('/next-order-fulfillment-dates')) {
       return json(route, fulfillmentWeek(url.searchParams.get('startDate') ?? FROM));
