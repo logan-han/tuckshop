@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- a folded paper lunch bag -->
+  <path d="M14 20h36l-3 38H17z" fill="#d8b98a"/>
+  <path d="M14 20h36l-4-9H18z" fill="#c4a374"/>
+  <path d="M22 11h20v9H22z" fill="#b08d5b"/>
+  <path d="M17 58l3-38" stroke="#b08d5b" stroke-width="1.5" fill="none"/>
+  <path d="M47 58l-3-38" stroke="#b08d5b" stroke-width="1.5" fill="none"/>
+  <path d="M23 36c4-4 8 3 12-1s6-3 8 1" stroke="#1b1a17" stroke-width="3" stroke-linecap="round" fill="none"/>
+</svg>

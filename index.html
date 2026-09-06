@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tuckshop – recurring school lunch orders for Flexischools</title>
+    <meta
+      name="description"
+      content="Order the same school lunch every Monday, Thursday or whichever days you like, for the whole term, in one go. Works with your existing Flexischools account and runs entirely in your browser."
+    />
+    <meta name="theme-color" content="#d8b98a" />
+    <link rel="canonical" href="https://tuckshop.han.life/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tuckshop.han.life/" />
+    <meta property="og:title" content="Tuckshop – recurring school lunch orders" />
+    <meta
+      property="og:description"
+      content="Pick the days, pick the food, place the whole term of Flexischools lunch orders at once."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,500;0,700;1,400&family=Caveat:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Google Analytics: page views only, production hosts only, so local dev and e2e runs stay out of the data -->
+    <script>
+      if (location.hostname.endsWith('han.life')) {
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { window.dataLayer.push(arguments); };
+        gtag('js', new Date());
+        gtag('config', 'G-CVEBFCXFSW');
+        var ga = document.createElement('script');
+        ga.async = true;
+        ga.src = 'https://www.googletagmanager.com/gtag/js?id=G-CVEBFCXFSW';
+        document.head.appendChild(ga);
+      }
+    </script>
+    <noscript>
+      <style>
+        #root::before {
+          content: 'Tuckshop runs in your browser and needs JavaScript. Your Flexischools login is only ever sent to Flexischools.';
+          display: block;
+          font-family: system-ui, sans-serif;
+          max-width: 40rem;
+          margin: 4rem auto;
+          padding: 0 1rem;
+        }
+      </style>
+    </noscript>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

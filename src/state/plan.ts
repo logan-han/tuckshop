@@ -1,0 +1,69 @@
+import { listDates, TERM_PRESETS, type ExcludedDate } from '../engine/schedule';
+
+export interface Plan {
+  weekdays: number[];
+  /** A TERM_PRESETS id, or "custom". */
+  presetId: string;
+  from: string;
+  to: string;
+  excluded: ExcludedDate[];
+}
+
+const STORAGE_KEY = 'tuckshop.plan';
+
+export function defaultPlan(today: string): Plan {
+  const preset = TERM_PRESETS.find((p) => p.to >= today) ?? TERM_PRESETS[TERM_PRESETS.length - 1];
+  return {
+    weekdays: [4],
+    presetId: preset.id,
+    from: preset.from,
+    to: preset.to,
+    excluded: preset.excluded,
+  };
+}
+
+export function applyPreset(plan: Plan, presetId: string): Plan {
+  const preset = TERM_PRESETS.find((p) => p.id === presetId);
+  if (!preset) return { ...plan, presetId: 'custom' };
+  return { ...plan, presetId, from: preset.from, to: preset.to, excluded: preset.excluded };
+}
+
+export function loadPlan(today: string): Plan {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultPlan(today);
+    const saved = JSON.parse(raw) as Partial<Plan>;
+    const base = defaultPlan(today);
+    const plan: Plan = {
+      weekdays:
+        Array.isArray(saved.weekdays) && saved.weekdays.length ? saved.weekdays : base.weekdays,
+      presetId: typeof saved.presetId === 'string' ? saved.presetId : base.presetId,
+      from: typeof saved.from === 'string' ? saved.from : base.from,
+      to: typeof saved.to === 'string' ? saved.to : base.to,
+      excluded: Array.isArray(saved.excluded) ? saved.excluded : base.excluded,
+    };
+    // A saved range that has completely passed is stale; start from the current term instead.
+    return plan.to < today ? { ...base, weekdays: plan.weekdays } : plan;
+  } catch {
+    return defaultPlan(today);
+  }
+}
+
+export function savePlan(plan: Plan): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
+  } catch {
+    // Storage unavailable; the plan just is not remembered for next time.
+  }
+}
+
+/** The dates this plan will order for, from today onwards. */
+export function planDates(plan: Plan, today: string): string[] {
+  return listDates({
+    from: plan.from,
+    to: plan.to,
+    weekdays: plan.weekdays,
+    excluded: plan.excluded.map((e) => e.date),
+    notBefore: today,
+  });
+}

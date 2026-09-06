@@ -1,0 +1,39 @@
+:root {
+  --paper: #ffffff;
+  --paper-dim: #f5f3ee;
+  --ink: #1b1a17;
+  --ink-soft: #5d5a52;
+  --ink-faint: #8d8981;
+  --rule: rgba(27, 26, 23, 0.14);
+  --rule-strong: rgba(27, 26, 23, 0.32);
+
+  --kraft: #d8b98a;
+  --kraft-deep: #b08d5b;
+  --kraft-shade: #c9a874;
+  --kraft-ink: #4a3a22;
+
+  --go: #0b6e4f;
+  --go-deep: #085a40;
+  --go-tint: #e3f2eb;
+  --warn: #9a5b00;
+  --warn-tint: #fff4dc;
+  --bad: #b3261e;
+  --bad-tint: #fdeae8;
+  --highlight: #ffe45c;
+
+  --font-ui:
+    'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI',
+    sans-serif;
+  --font-marker: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+
+  --size-1: 0.875rem;
+  --size-2: 1rem;
+  --size-3: 1.125rem;
+  --size-4: 1.375rem;
+  --size-5: 1.75rem;
+  --size-6: 2.5rem;
+
+  --radius: 6px;
+  --gap: 1rem;
+  --measure: 38rem;
+}
