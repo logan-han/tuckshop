@@ -137,15 +137,34 @@ export async function signIn(email: string, password: string, remember = false):
   return session;
 }
 
+/** Cognito rejections worth another go later; anything else means the refresh token is finished. */
+const TRANSIENT = new Set([
+  'TooManyRequestsException',
+  'LimitExceededException',
+  'InternalErrorException',
+]);
+
+/** Drop the dead session so the next call fails fast instead of asking Cognito again. */
+function sessionExpired(): AuthError {
+  clearSession();
+  return new AuthError('signed_out', 'Your Flexischools session has expired. Sign in again.');
+}
+
 export async function refreshSession(current: Session): Promise<Session> {
-  const data = await cognito('InitiateAuth', {
-    AuthFlow: 'REFRESH_TOKEN_AUTH',
-    AuthParameters: { REFRESH_TOKEN: current.refreshToken },
-    ClientId: COGNITO_CLIENT_ID,
-  });
-  if (!data.AuthenticationResult) {
-    throw new AuthError('signed_out', 'Your Flexischools session has expired. Sign in again.');
+  let data: CognitoResponse;
+  try {
+    data = await cognito('InitiateAuth', {
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      AuthParameters: { REFRESH_TOKEN: current.refreshToken },
+      ClientId: COGNITO_CLIENT_ID,
+    });
+  } catch (error) {
+    // An expired or revoked refresh token comes back as NotAuthorizedException, which on its own
+    // would read as "wrong password" rather than "your session ended".
+    if (error instanceof AuthError && !TRANSIENT.has(error.code)) throw sessionExpired();
+    throw error;
   }
+  if (!data.AuthenticationResult) throw sessionExpired();
   const session = toSession(data.AuthenticationResult, current.refreshToken, !!current.remember);
   saveSession(session);
   return session;

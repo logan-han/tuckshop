@@ -154,6 +154,36 @@ describe('getIdToken', () => {
     fetchMock.mockResolvedValueOnce(cognitoOk({ ChallengeName: 'NEW_PASSWORD_REQUIRED' }));
     await expect(refreshSession(session)).rejects.toMatchObject({ code: 'signed_out' });
   });
+
+  it('reads an expired refresh token as a lapsed session, not a wrong password', async () => {
+    saveSession(session);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          __type: 'NotAuthorizedException',
+          message: 'Refresh Token has expired',
+        }),
+        { status: 400 },
+      ),
+    );
+
+    await expect(getIdToken(1_999_990_000)).rejects.toMatchObject({ code: 'signed_out' });
+    // The session is gone, so nothing asks Cognito about it a second time.
+    expect(loadSession()).toBeNull();
+    await expect(getIdToken(1_999_990_000)).rejects.toMatchObject({ code: 'signed_out' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the session when Cognito is only throttling', async () => {
+    saveSession(session);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ __type: 'TooManyRequestsException' }), { status: 429 }),
+    );
+    await expect(refreshSession(session)).rejects.toMatchObject({
+      code: 'TooManyRequestsException',
+    });
+    expect(loadSession()).not.toBeNull();
+  });
 });
 
 describe('decodeClaims', () => {
