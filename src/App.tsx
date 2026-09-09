@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { clearSession, loadSession, type Session } from './api/auth';
 import { describeError, needsSignIn } from './api/errors';
-import { getAvailableServices, getOrderFee, getStudents, getWallet } from './api/flexischools';
+import {
+  getAvailableServices,
+  getOrderFee,
+  getOrderHistory,
+  getStudents,
+  getWallet,
+} from './api/flexischools';
 import type { AvailableService, Student, StudentService, Wallet } from './api/types';
 import CheckStep from './components/CheckStep';
 import DoneStep from './components/DoneStep';
@@ -12,12 +18,14 @@ import UpcomingOrders from './components/UpcomingOrders';
 import WhatStep from './components/WhatStep';
 import WhenStep from './components/WhenStep';
 import WhoStep from './components/WhoStep';
-import type { OrderOutcome } from './engine/orders';
+import { existingOrdersByDate, type ExistingOrders, type OrderOutcome } from './engine/orders';
 import { bagFor, EMPTY_BAGS, setBag, type Bags } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
 import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from './state/plan';
 
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
+
+const NO_ORDERS: ExistingOrders = new Map();
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -30,6 +38,9 @@ export default function App() {
   const [fee, setFee] = useState<number | null>(null);
   const [plan, setPlan] = useState<Plan>(() => loadPlan(todayIso()));
   const [bags, setBags] = useState<Bags>(EMPTY_BAGS);
+  /** Live orders already placed for the planned range, by date. */
+  const [existing, setExisting] = useState<ExistingOrders>(NO_ORDERS);
+  const [ordersEpoch, setOrdersEpoch] = useState(0);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
@@ -43,6 +54,7 @@ export default function App() {
     setService(null);
     setFee(null);
     setBags(EMPTY_BAGS);
+    setExisting(NO_ORDERS);
     setStep('who');
     setView('plan');
     setBanner(message);
@@ -56,8 +68,10 @@ export default function App() {
     [signOut],
   );
 
-  const refreshWallet = useCallback(() => {
+  /** After orders are placed or cancelled: the wallet and the list of existing orders both moved. */
+  const refreshAccount = useCallback(() => {
     getWallet().then(setWallet).catch(handleError);
+    setOrdersEpoch((n) => n + 1);
   }, [handleError]);
 
   /** Selecting a student also points the plan at a term their school actually has. */
@@ -65,6 +79,7 @@ export default function App() {
     setStudent(s);
     setService(svc);
     setBags(EMPTY_BAGS);
+    setExisting(NO_ORDERS);
     setPlan((current) => {
       const next = retargetPlan(current, todayIso(), s.schoolName);
       if (next !== current) savePlan(next);
@@ -133,6 +148,25 @@ export default function App() {
   const today = todayIso();
   const dates = useMemo(() => planDates(plan, today), [plan, today]);
 
+  // What is already ordered for the planned range, so the earlier steps can point it out. The
+  // check step fetches again right before placing anything.
+  const historyTo = plan.to >= today ? plan.to : today;
+  useEffect(() => {
+    if (!student || !service) return;
+    let cancelled = false;
+    getOrderHistory({ fromDate: today, toDate: historyTo, pageSize: 200 })
+      .then((history) => {
+        if (cancelled) return;
+        setExisting(existingOrdersByDate(history, student.studentKey, service.supplierServiceKey));
+      })
+      .catch((error) => {
+        if (!cancelled) handleError(error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [student, service, today, historyTo, ordersEpoch, handleError]);
+
   function updatePlan(next: Plan) {
     setPlan(next);
     savePlan(next);
@@ -168,7 +202,7 @@ export default function App() {
       )}
 
       {view === 'orders' ? (
-        <UpcomingOrders onError={handleError} onChanged={refreshWallet} />
+        <UpcomingOrders onError={handleError} onChanged={refreshAccount} />
       ) : (
         <div className="layout">
           <div className="layout__main">
@@ -193,6 +227,7 @@ export default function App() {
                 plan={plan}
                 presets={presetsFor(student?.schoolName)}
                 dates={dates}
+                existing={existing}
                 onChange={updatePlan}
                 onBack={() => setStep('who')}
                 onContinue={() => setStep('what')}
@@ -205,6 +240,7 @@ export default function App() {
                 service={service}
                 dates={dates}
                 bags={bags}
+                existing={existing}
                 onChange={setBags}
                 onSkipDate={(date) => updatePlan(skipDate(plan, date))}
                 onBack={() => setStep('when')}
@@ -225,7 +261,7 @@ export default function App() {
                 onPlaced={(result) => {
                   setOutcomes(result);
                   setStep('done');
-                  refreshWallet();
+                  refreshAccount();
                 }}
                 onError={handleError}
               />

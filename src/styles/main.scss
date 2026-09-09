@@ -389,6 +389,13 @@ a {
   }
 }
 
+/* a date that already has an order placed */
+.chip__tag {
+  font-size: var(--size-1);
+  font-weight: 600;
+  color: var(--warn);
+}
+
 /* a date with a lunch of its own */
 .chip[data-own]::before {
   content: '';
@@ -749,7 +756,8 @@ a {
   color: var(--bad);
 }
 
-.status--checking {
+.status--checking,
+.status--quiet {
   color: var(--ink-faint);
 }
 

@@ -71,6 +71,11 @@ function respond(url: string): Response {
     );
   }
   if (url.endsWith('/orderfee')) return new Response(JSON.stringify({ fee: 0.33, feeTax: 0.03 }));
+  if (url.endsWith('/orders/order-history')) {
+    return new Response(
+      JSON.stringify({ hasMoreOrders: false, orderCount: 0, presentOrders: [], pastOrders: [] }),
+    );
+  }
   return new Response('not mocked', { status: 500 });
 }
 
@@ -105,6 +110,13 @@ describe('App', () => {
     const bag = screen.getByRole('complementary', { name: 'Your lunch order so far' });
     expect(bag).toHaveTextContent('Sam');
     expect(bag).toHaveTextContent('Lunch');
+    // No weekday is picked for you; the plan cannot go on until one is.
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+      expect(screen.getByRole('button', { name: day })).toHaveAttribute('aria-pressed', 'false');
+    }
+    expect(screen.getByText(/lunches to order/)).toHaveTextContent('0 lunches to order');
+    expect(screen.getByRole('button', { name: 'Choose the food' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Thursday' }));
     expect(screen.getByRole('button', { name: 'Thursday' })).toHaveAttribute(
       'aria-pressed',
       'true',

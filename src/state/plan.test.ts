@@ -18,7 +18,7 @@ describe('plan presets by school', () => {
     expect(currentPreset('2026-09-07', 'Ringwood Primary School').id).toBe('vic-2026-t3');
     expect(currentPreset('2099-01-01', 'Tintern Grammar').id).toBe('tintern-2027-t4');
     expect(defaultPlan('2026-10-01', 'Tintern Grammar')).toMatchObject({
-      weekdays: [4],
+      weekdays: [],
       presetId: 'tintern-2026-t4',
       from: '2026-10-05',
       to: '2026-12-09',
@@ -56,6 +56,12 @@ describe('plan presets by school', () => {
     expect(later.presetId).toBe('tintern-2027-t1');
     expect(later.weekdays).toEqual([1, 3]);
     expect(planDates(later, '2027-01-15')[0]).toBe('2027-02-03');
+  });
+
+  it('starts with no weekday chosen and keeps an emptied selection empty', () => {
+    expect(loadPlan('2026-10-01', 'Tintern Grammar').weekdays).toEqual([]);
+    savePlan({ ...defaultPlan('2026-10-01', 'Tintern Grammar'), weekdays: [] });
+    expect(loadPlan('2026-10-01', 'Tintern Grammar').weekdays).toEqual([]);
   });
 });
 

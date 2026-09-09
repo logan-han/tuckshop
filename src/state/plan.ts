@@ -20,7 +20,7 @@ export function currentPreset(today: string, schoolName?: string | null) {
 export function defaultPlan(today: string, schoolName?: string | null): Plan {
   const preset = currentPreset(today, schoolName);
   return {
-    weekdays: [4],
+    weekdays: [],
     presetId: preset.id,
     from: preset.from,
     to: preset.to,
@@ -60,8 +60,7 @@ export function loadPlan(today: string, schoolName?: string | null): Plan {
     const saved = JSON.parse(raw) as Partial<Plan>;
     const base = defaultPlan(today, schoolName);
     const plan: Plan = {
-      weekdays:
-        Array.isArray(saved.weekdays) && saved.weekdays.length ? saved.weekdays : base.weekdays,
+      weekdays: Array.isArray(saved.weekdays) ? saved.weekdays : base.weekdays,
       presetId: typeof saved.presetId === 'string' ? saved.presetId : base.presetId,
       from: typeof saved.from === 'string' ? saved.from : base.from,
       to: typeof saved.to === 'string' ? saved.to : base.to,

@@ -6,6 +6,7 @@ import type { HistoryOrder, Student, StudentService, Wallet } from '../api/types
 import {
   buildPlaceOrdersBody,
   checkAvailability,
+  describeOrders,
   existingOrdersByDate,
   summariseOutcomes,
   type OrderOutcome,
@@ -15,7 +16,8 @@ import { cartTotals, formatMoney, orderAmount, type Selection } from '../engine/
 import { formatShort } from '../engine/schedule';
 import { selectionsForDate, type Bags } from '../engine/selections';
 
-type Status = 'checking' | 'ok' | 'ordered' | 'closed' | 'cutoff' | 'unavailable' | 'error';
+type Status =
+  'checking' | 'ok' | 'ordered' | 'empty' | 'closed' | 'cutoff' | 'unavailable' | 'error';
 
 interface Row {
   date: string;
@@ -40,10 +42,14 @@ interface Props {
   onError: (error: unknown) => void;
 }
 
-const STATUS_LABEL: Record<Status, { text: string; tone: 'ok' | 'warn' | 'bad' | 'checking' }> = {
+const STATUS_LABEL: Record<
+  Status,
+  { text: string; tone: 'ok' | 'warn' | 'bad' | 'checking' | 'quiet' }
+> = {
   checking: { text: 'Checking', tone: 'checking' },
   ok: { text: 'Ready', tone: 'ok' },
   ordered: { text: 'Already ordered', tone: 'warn' },
+  empty: { text: 'Nothing chosen', tone: 'quiet' },
   closed: { text: 'Canteen closed', tone: 'bad' },
   cutoff: { text: 'Cut-off passed', tone: 'bad' },
   unavailable: { text: 'Not available', tone: 'bad' },
@@ -119,10 +125,10 @@ export default function CheckStep({
               status: 'ordered',
               dueDate: entry.fulfillmentDate,
               existing: orders,
-              detail: orders
-                .flatMap((o) => o.orderItems.map((i) => i.itemDisplayName.split(' - ')[0]))
-                .join(', '),
+              detail: describeOrders(orders),
             });
+          } else if (selectionsForDate(bags, date).length === 0) {
+            update(date, { status: 'empty', dueDate: entry.fulfillmentDate });
           } else {
             toFetch.push({ date, dueDate: entry.fulfillmentDate });
           }
@@ -130,10 +136,6 @@ export default function CheckStep({
 
         await mapWithConcurrency(toFetch, 4, async ({ date, dueDate }) => {
           const chosen = selectionsForDate(bags, date);
-          if (chosen.length === 0) {
-            update(date, { status: 'unavailable', dueDate, detail: 'Nothing chosen for this day' });
-            return;
-          }
           try {
             const menu = await getMenu({
               supplierKey: service.supplierKey,
@@ -250,7 +252,10 @@ export default function CheckStep({
           <tbody>
             {rows.map((row) => {
               const label = STATUS_LABEL[row.status];
-              const selectable = row.status === 'ok' || row.status === 'ordered';
+              // An already-ordered date can take an extra order, as long as there is something to order.
+              const selectable =
+                row.status === 'ok' ||
+                (row.status === 'ordered' && selectionsForDate(bags, row.date).length > 0);
               return (
                 <tr key={row.date} data-status={selectable ? 'fine' : 'problem'}>
                   <td>

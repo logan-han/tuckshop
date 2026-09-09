@@ -192,6 +192,16 @@ export function summariseOutcomes(
   });
 }
 
+/** "Chicken Tenders, Hot Dog": what the orders already placed for a date contain. */
+export function describeOrders(orders: HistoryOrder[]): string {
+  return orders
+    .flatMap((o) => o.orderItems.map((i) => i.itemDisplayName.split(' - ')[0]))
+    .join(', ');
+}
+
+/** Live orders already placed, by date. */
+export type ExistingOrders = ReadonlyMap<string, HistoryOrder[]>;
+
 /** Live (not cancelled) orders per date for this student and service. */
 export function existingOrdersByDate(
   history: { presentOrders: Array<{ orders: HistoryOrder[] }> },

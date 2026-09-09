@@ -3,6 +3,7 @@ import { describeError } from '../api/errors';
 import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
 import type { FulfillmentDate, Menu, MenuItem, Student, StudentService } from '../api/types';
+import { describeOrders, type ExistingOrders } from '../engine/orders';
 import { formatMoney, missingChoices, type Selection } from '../engine/pricing';
 import { formatDayMonth, formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
 import {
@@ -24,6 +25,8 @@ interface Props {
   /** Planned dates, ascending. */
   dates: string[];
   bags: Bags;
+  /** Orders already placed for this student and service, by date. */
+  existing: ExistingOrders;
   onChange: (bags: Bags) => void;
   /** Takes a date out of the plan altogether. */
   onSkipDate: (date: string) => void;
@@ -71,6 +74,7 @@ export default function WhatStep({
   service,
   dates,
   bags,
+  existing,
   onChange,
   onSkipDate,
   onBack,
@@ -208,8 +212,14 @@ export default function WhatStep({
   }
 
   const missing = datesWithoutFood(bags, dates);
+  // Dates left empty are simply not ordered for; only nothing at all is a blocker.
+  const anyFood = missing.length < dates.length;
   const incomplete = [...new Set(dates.flatMap((date) => selectionsForDate(bags, date)))].filter(
     (s) => missingChoices(s).length > 0,
+  );
+  // The dates being edited that already have an order: the one date, or every such date of the weekday.
+  const orderedDates = (ref.date !== undefined ? [ref.date] : dayDates).filter((date) =>
+    existing.has(date),
   );
   const emptyDays = weekdays.filter((d) => (bags.byDay[d]?.length ?? 0) === 0);
   const otherDaysEmpty =
@@ -314,6 +324,7 @@ export default function WhatStep({
                   onClick={() => setTarget({ date })}
                 >
                   {formatDayMonth(date)}
+                  {existing.has(date) && <span className="chip__tag">ordered</span>}
                   {note && <span className="hint">{note}</span>}
                 </button>
               );
@@ -345,6 +356,20 @@ export default function WhatStep({
       {loaded?.error && (
         <p className="notice notice--bad" role="alert">
           {loaded.error}
+        </p>
+      )}
+
+      {orderedDates.length > 0 && (
+        <p className="notice notice--warn" role="status">
+          {student.studentFirstName} already has an order for{' '}
+          {orderedDates.map((date, i) => (
+            <span key={date}>
+              {i > 0 ? (i === orderedDates.length - 1 ? ' and ' : ', ') : ''}
+              {formatShort(date)} ({describeOrders(existing.get(date) ?? [])})
+            </span>
+          ))}
+          . Anything chosen here goes in as an extra order for{' '}
+          {orderedDates.length === 1 ? 'that day' : 'those days'}.
         </p>
       )}
 
@@ -458,13 +483,15 @@ export default function WhatStep({
         <button
           type="button"
           className="button"
-          disabled={missing.length > 0 || incomplete.length > 0}
+          disabled={!anyFood || incomplete.length > 0}
           onClick={onContinue}
         >
           Check every date
         </button>
-        {missing.length > 0 && (weekdays.length > 1 || missing.length < dates.length) && (
-          <span className="hint">Still nothing for {describeMissing(missing, dates)}.</span>
+        {missing.length > 0 && anyFood && (
+          <span className="hint">
+            Nothing yet for {describeMissing(missing, dates)}, so those dates are left out.
+          </span>
         )}
         {incomplete.length > 0 && (
           <span className="hint">

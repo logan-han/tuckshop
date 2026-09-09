@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ExistingOrders } from '../engine/orders';
 import { formatShort, isIsoDate, WEEKDAYS, weekdayOf, type TermPreset } from '../engine/schedule';
 import { applyPreset, skipDate, type Plan } from '../state/plan';
 
@@ -6,13 +7,31 @@ interface Props {
   plan: Plan;
   presets: TermPreset[];
   dates: string[];
+  /** Orders already placed for this student and service, by date. */
+  existing: ExistingOrders;
   onChange: (plan: Plan) => void;
   onBack: () => void;
   onContinue: () => void;
 }
 
-export default function WhenStep({ plan, presets, dates, onChange, onBack, onContinue }: Props) {
+/** "Thu 10 Sep, Thu 17 Sep" or "Thu 10 Sep, Thu 17 Sep, Thu 24 Sep and 2 more" */
+function listDates(dates: string[]): string {
+  const shown = dates.length > 4 ? dates.slice(0, 3) : dates;
+  const rest = dates.length - shown.length;
+  return shown.map(formatShort).join(', ') + (rest > 0 ? ` and ${rest} more` : '');
+}
+
+export default function WhenStep({
+  plan,
+  presets,
+  dates,
+  existing,
+  onChange,
+  onBack,
+  onContinue,
+}: Props) {
   const [newExclusion, setNewExclusion] = useState('');
+  const ordered = dates.filter((date) => existing.has(date));
 
   function toggleWeekday(value: number) {
     const weekdays = plan.weekdays.includes(value)
@@ -174,7 +193,25 @@ export default function WhenStep({ plan, presets, dates, onChange, onBack, onCon
             · first {formatShort(dates[0])}, last {formatShort(dates[dates.length - 1])}
           </span>
         )}
+        {ordered.length > 0 && <span className="hint"> · {ordered.length} already ordered</span>}
       </p>
+      {ordered.length > 0 && (
+        <p className="hint" role="status">
+          There is already an order for {listDates(ordered)}. Those dates stay in the plan in case
+          you want to add to them, and start unticked at the check.{' '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() =>
+              onChange(
+                ordered.reduce((next, date) => skipDate(next, date, 'Already ordered'), plan),
+              )
+            }
+          >
+            Skip them
+          </button>
+        </p>
+      )}
 
       <div className="actions">
         <button type="button" className="button button--quiet" onClick={onBack}>

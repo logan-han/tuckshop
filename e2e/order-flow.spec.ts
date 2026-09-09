@@ -97,8 +97,10 @@ async function signInAndPlan(page: Page) {
   await page.getByLabel('Password').fill('secret');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  // One student with one service skips straight to the days.
+  // One student with one service skips straight to the days. No weekday is chosen for you.
   await expect(page.getByRole('heading', { name: 'Which days?' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose the food' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Thursday' }).click();
   await page.getByLabel('Term').selectOption('custom');
   await page.getByLabel('From').fill(FROM);
   await page.getByLabel('To').fill(TO);
@@ -195,7 +197,17 @@ test.describe('ordering a term of lunches', () => {
   test('leaves out sold-out days and days that already have an order', async ({ page }) => {
     await mockFlexischools(page, { soldOutOn: '2036-10-16', alreadyOrderedOn: '2036-10-23' });
     await signInAndPlan(page);
+    await expect(page.getByText('1 already ordered')).toBeVisible();
+    await expect(page.getByText('There is already an order for Thu 23 Oct.')).toBeVisible();
     await page.getByRole('button', { name: 'Choose the food' }).click();
+
+    // The date chip carries the marker, and editing that date says what is already coming.
+    await expect(page.getByRole('button', { name: /^23 Oct/ })).toContainText('ordered');
+    await page.getByRole('button', { name: /^23 Oct/ }).click();
+    await expect(
+      page.getByText('Sam already has an order for Thu 23 Oct (Hot Dog).'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: /^Every Thursday/ }).click();
     await page.getByRole('button', { name: /Chicken Tenders/ }).click();
     await page
       .getByRole('dialog')
@@ -251,8 +263,11 @@ test.describe('ordering a term of lunches', () => {
       .getByRole('dialog')
       .getByRole('button', { name: /Add to the bag/ })
       .click();
-    await expect(page.getByRole('button', { name: 'Check every date' })).toBeDisabled();
-    await expect(page.getByText('Still nothing for Fridays.')).toBeVisible();
+    // Fridays are still empty; the check can go ahead without them, and says so.
+    await expect(page.getByRole('button', { name: 'Check every date' })).toBeEnabled();
+    await expect(
+      page.getByText('Nothing yet for Fridays, so those dates are left out.'),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /^Fridays/ }).click();
     await page.getByRole('button', { name: /Hot Dog/ }).click();
@@ -288,6 +303,33 @@ test.describe('ordering a term of lunches', () => {
     });
   });
 
+  test('goes on to the check with a day left empty and orders only the days with food', async ({
+    page,
+  }) => {
+    const captured = await mockFlexischools(page);
+    await signInAndPlan(page);
+    await page.getByRole('button', { name: 'Friday' }).click();
+    await expect(page.getByText('8 lunches to order')).toBeVisible();
+    await page.getByRole('button', { name: 'Choose the food' }).click();
+
+    await page.getByRole('button', { name: /Chicken Tenders/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Add to the bag/ })
+      .click();
+    await page.getByRole('button', { name: 'Check every date' }).click();
+
+    await expect(page.getByText('Nothing chosen')).toHaveCount(4);
+    await expect(page.getByLabel('Order for Fri 10 Oct')).toBeDisabled();
+    await page.getByRole('button', { name: /Place 4 orders for \$20.92/ }).click();
+    await expect(page.getByRole('heading', { name: '4 lunches ordered for Sam' })).toBeVisible();
+
+    const body = captured.placeOrderBodies[0] as {
+      placeOrderRequests: Array<{ dueDate: string }>;
+    };
+    expect(body.placeOrderRequests.map((r) => r.dueDate.slice(0, 10))).toEqual(THURSDAYS);
+  });
+
   test('with two children, asks who first and places orders against the chosen one', async ({
     page,
   }) => {
@@ -312,6 +354,7 @@ test.describe('ordering a term of lunches', () => {
       page.getByRole('option', { name: /Victorian government schools/ }).first(),
     ).toBeAttached();
     await expect(page.getByRole('option', { name: /Tintern/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Thursday' }).click();
     await page.getByLabel('Term').selectOption('custom');
     await page.getByLabel('From').fill(FROM);
     await page.getByLabel('To').fill(TO);
