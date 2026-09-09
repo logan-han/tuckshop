@@ -50,10 +50,11 @@ export interface MenuOption {
 export interface MenuOptionSet {
   optionSetKey: string;
   name: string;
+  /** 0 and null both mean no limit; the portal only checks truthiness. */
   maxQuantity: number | null;
   minQuantity: number | null;
   sequence: number;
-  /** 1 = choose one, 2 = choose any */
+  /** Portal enum: 0 not supported, 1 single (radio), 2 multi (checkbox), 3 multi with quantities, 4 text box. */
   optionSetRenderType: number;
   options: MenuOption[];
 }
@@ -87,6 +88,7 @@ export interface MenuItem {
   questionSets: MenuQuestionSet[];
   labels: Array<{ name?: string } | string>;
   allergens: unknown[];
+  /** Portal enum: 0 sum of options, 1 item price only, 2 item price plus options, 3 all options. */
   priceOption: number;
   requiresQuantitySellLimitCheck: boolean;
 }

@@ -19,9 +19,18 @@ interface Props {
 function defaultChoices(item: MenuItem): OptionChoice[] {
   return item.optionSets.flatMap((set) =>
     set.options
-      .filter((o) => o.isDefault && o.inStock)
+      .filter((o) => o.isDefault && o.isActive && o.inStock)
       .map((o) => ({ optionKey: o.optionKey, quantity: 1 })),
   );
+}
+
+/** The description without its HTML, or null when the canteen left only a stray full stop. */
+function plainDescription(description: string | null): string | null {
+  const text = (description ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /[\p{L}\p{N}]/u.test(text) ? text : null;
 }
 
 export default function ItemDialog({ item, existing, onSave, onRemove, onClose }: Props) {
@@ -50,6 +59,7 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
       .map((q) => ({ questionKey: q.questionKey, answer: answers[q.questionKey] ?? '' })),
   };
   const missing = missingChoices(selection);
+  const description = plainDescription(item.description);
   const maxQuantity =
     item.hasQuantitySellLimit && item.quantityLeft !== null ? Math.max(1, item.quantityLeft) : 20;
 
@@ -79,14 +89,16 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
         </h2>
         <p className="dialog__price">
           {formatMoney(item.itemPrice)}
-          {item.description && (
-            <span className="hint"> · {item.description.replace(/<[^>]+>/g, ' ').trim()}</span>
-          )}
+          {description && <span className="hint"> · {description}</span>}
         </p>
 
         {item.optionSets.map((set) => {
           const setKeys = set.options.map((o) => o.optionKey);
           const single = set.optionSetRenderType === 1 || set.maxQuantity === 1;
+          // The portal reads a maxQuantity of 0 the same as null: no limit.
+          const limit = set.maxQuantity || null;
+          const chosenInSet = options.filter((c) => setKeys.includes(c.optionKey)).length;
+          const full = !single && limit !== null && chosenInSet >= limit;
           return (
             <fieldset className="option-set" key={set.optionSetKey}>
               <legend className="option-set__legend">
@@ -97,36 +109,38 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
                     ? set.minQuantity
                       ? 'choose one'
                       : 'optional'
-                    : set.maxQuantity
-                      ? `choose up to ${set.maxQuantity}`
+                    : limit
+                      ? `choose up to ${limit}`
                       : 'choose any'}
                 </span>
               </legend>
-              {set.options.map((option) => {
-                const checked = options.some((c) => c.optionKey === option.optionKey);
-                return (
-                  <label className="option" key={option.optionKey} data-soldout={!option.inStock}>
-                    <input
-                      type={single ? 'radio' : 'checkbox'}
-                      name={set.optionSetKey}
-                      checked={checked}
-                      disabled={!option.inStock}
-                      onChange={() =>
-                        single
-                          ? chooseOne(setKeys, option.optionKey)
-                          : toggleMany(option.optionKey, set.maxQuantity, setKeys)
-                      }
-                    />
-                    <span>
-                      {option.name}
-                      {!option.inStock && <span className="hint"> sold out</span>}
-                    </span>
-                    {option.optionPrice > 0 && (
-                      <span className="option__price">+{formatMoney(option.optionPrice)}</span>
-                    )}
-                  </label>
-                );
-              })}
+              {set.options
+                .filter((option) => option.isActive)
+                .map((option) => {
+                  const checked = options.some((c) => c.optionKey === option.optionKey);
+                  return (
+                    <label className="option" key={option.optionKey} data-soldout={!option.inStock}>
+                      <input
+                        type={single ? 'radio' : 'checkbox'}
+                        name={set.optionSetKey}
+                        checked={checked}
+                        disabled={!option.inStock || (full && !checked)}
+                        onChange={() =>
+                          single
+                            ? chooseOne(setKeys, option.optionKey)
+                            : toggleMany(option.optionKey, limit, setKeys)
+                        }
+                      />
+                      <span>
+                        {option.name}
+                        {!option.inStock && <span className="hint"> sold out</span>}
+                      </span>
+                      {option.optionPrice > 0 && (
+                        <span className="option__price">+{formatMoney(option.optionPrice)}</span>
+                      )}
+                    </label>
+                  );
+                })}
             </fieldset>
           );
         })}

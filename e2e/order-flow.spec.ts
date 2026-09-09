@@ -174,6 +174,24 @@ test.describe('ordering a term of lunches', () => {
     });
   });
 
+  test('ticks any number of priced flavours in a choose-any set', async ({ page }) => {
+    await mockFlexischools(page);
+    await signInAndPlan(page);
+    await page.getByRole('button', { name: 'Choose the food' }).click();
+    await page.getByRole('button', { name: /Frozen Yoghurt Cup/ }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('choose any')).toBeVisible();
+    await dialog.getByLabel(/Strawberry/).check();
+    await dialog.getByLabel(/Mango/).check();
+    await expect(dialog.getByLabel(/Mango/)).toBeChecked();
+    await dialog.getByRole('button', { name: /Add to the bag · \$3\.00/ }).click();
+
+    const bag = page.getByRole('complementary', { name: 'Your lunch order so far' });
+    await expect(bag.getByText('Strawberry, Mango', { exact: false })).toBeVisible();
+    await expect(bag.getByText('$3.00')).toHaveCount(2); // the line and "each lunch"
+  });
+
   test('leaves out sold-out days and days that already have an order', async ({ page }) => {
     await mockFlexischools(page, { soldOutOn: '2036-10-16', alreadyOrderedOn: '2036-10-23' });
     await signInAndPlan(page);
