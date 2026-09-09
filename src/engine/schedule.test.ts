@@ -4,6 +4,7 @@ import {
   presetsFor,
   dateOf,
   describeCount,
+  formatDayMonth,
   formatLong,
   formatShort,
   isIsoDate,
@@ -82,6 +83,7 @@ describe('schedule', () => {
   it('formats for Australians', () => {
     expect(formatShort('2026-09-10')).toBe('Thu 10 Sep');
     expect(formatShort('2026-12-03')).toBe('Thu 3 Dec');
+    expect(formatDayMonth('2026-12-03')).toBe('3 Dec');
     expect(formatLong('2026-09-10')).toBe('Thursday 10 September 2026');
     expect(dateOf('2026-09-10T12:40:00')).toBe('2026-09-10');
   });

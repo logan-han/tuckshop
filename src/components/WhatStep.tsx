@@ -4,7 +4,7 @@ import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
 import type { FulfillmentDate, Menu, MenuItem, Student, StudentService } from '../api/types';
 import { formatMoney, missingChoices, type Selection } from '../engine/pricing';
-import { formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
+import { formatDayMonth, formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
 import {
   bagFor,
   copyToAllDays,
@@ -313,7 +313,7 @@ export default function WhatStep({
                   aria-pressed={ref.date === date}
                   onClick={() => setTarget({ date })}
                 >
-                  {formatShort(date)}
+                  {formatDayMonth(date)}
                   {note && <span className="hint">{note}</span>}
                 </button>
               );

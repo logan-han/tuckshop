@@ -284,10 +284,15 @@ const MONTH_NAMES = [
   'December',
 ];
 
+/** "10 Sep", for a row of dates that already says which weekday they are */
+export function formatDayMonth(iso: string): string {
+  const [, month, day] = iso.split('-').map(Number);
+  return `${day} ${MONTH_NAMES[month - 1].slice(0, 3)}`;
+}
+
 /** "Thu 10 Sep" (fixed English names, so every ICU build agrees) */
 export function formatShort(iso: string): string {
-  const [, month, day] = iso.split('-').map(Number);
-  return `${DAY_NAMES[weekdayOf(iso) - 1].slice(0, 3)} ${day} ${MONTH_NAMES[month - 1].slice(0, 3)}`;
+  return `${DAY_NAMES[weekdayOf(iso) - 1].slice(0, 3)} ${formatDayMonth(iso)}`;
 }
 
 /** "Thursday 10 September 2026" */

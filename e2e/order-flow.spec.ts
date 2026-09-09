@@ -363,7 +363,7 @@ test.describe('ordering a term of lunches', () => {
 
     // The third Thursday gets a hot dog instead. Its own menu is loaded, and it starts from
     // every Thursday's lunch, so the tenders come out and the hot dog goes in.
-    await page.getByRole('button', { name: /^Thu 23 Oct/ }).click();
+    await page.getByRole('button', { name: /^23 Oct/ }).click();
     await expect(page.getByText('gets every Thursday', { exact: false })).toBeVisible();
     expect(captured.menuDueDates).toContain('2036-10-23T12:40:00');
     await hotSnacks.getByRole('button', { name: /Hot Dog/ }).click();
@@ -371,10 +371,10 @@ test.describe('ordering a term of lunches', () => {
       .getByRole('dialog')
       .getByRole('button', { name: /Add to the bag/ })
       .click();
-    await expect(page.getByRole('button', { name: /^Thu 23 Oct/ })).toContainText('2 items');
+    await expect(page.getByRole('button', { name: /^23 Oct/ })).toContainText('2 items');
     await hotSnacks.getByRole('button', { name: /Chicken Tenders/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Take out of the bag' }).click();
-    await expect(page.getByRole('button', { name: /^Thu 23 Oct/ })).toContainText('Hot Dog');
+    await expect(page.getByRole('button', { name: /^23 Oct/ })).toContainText('Hot Dog');
     await expect(page.getByText('has a lunch of its own', { exact: false })).toBeVisible();
 
     const bag = page.getByRole('complementary', { name: 'Your lunch order so far' });
@@ -383,7 +383,7 @@ test.describe('ordering a term of lunches', () => {
     await expect(bag.getByText('$20.52')).toBeVisible(); // 3 × 4.90 + 4.50 + 4 × 0.33
 
     // Changing your mind hands the date back to the weekday.
-    await page.getByRole('button', { name: /^Thu 30 Oct/ }).click();
+    await page.getByRole('button', { name: /^30 Oct/ }).click();
     await hotSnacks.getByRole('button', { name: /Hot Dog/ }).click();
     await page
       .getByRole('dialog')
@@ -395,9 +395,9 @@ test.describe('ordering a term of lunches', () => {
     await expect(bag.getByText('$20.52')).toBeVisible();
 
     // A date can be dropped from the plan here too.
-    await page.getByRole('button', { name: /^Thu 16 Oct/ }).click();
+    await page.getByRole('button', { name: /^16 Oct/ }).click();
     await page.getByRole('button', { name: 'Skip this date' }).click();
-    await expect(page.getByRole('button', { name: /^Thu 16 Oct/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^16 Oct/ })).toHaveCount(0);
     await expect(bag.getByText('3 Thursdays')).toBeVisible();
     await expect(bag.getByText('$15.29')).toBeVisible(); // 2 × 4.90 + 4.50 + 3 × 0.33
 

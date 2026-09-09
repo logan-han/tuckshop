@@ -125,6 +125,11 @@ export default function App() {
     };
   }, [student, service, handleError]);
 
+  // Each step starts at the top; on a phone the button that got you here sits far down the page.
+  useEffect(() => {
+    if (window.scrollY > 0) window.scrollTo({ top: 0 });
+  }, [step, view]);
+
   const today = todayIso();
   const dates = useMemo(() => planDates(plan, today), [plan, today]);
 
