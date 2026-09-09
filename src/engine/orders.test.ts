@@ -232,6 +232,60 @@ describe('buildPlaceOrdersBody', () => {
       questions: [{ questionKey: 'q', answer: 'no skin' }],
     });
   });
+
+  it('names an unticked default option as excluded, like the portal', () => {
+    const option = (optionKey: string, isDefault: boolean) => ({
+      optionKey,
+      name: optionKey,
+      isActive: true,
+      inStock: true,
+      isDefault,
+      optionSequence: 0,
+      optionTax: 0,
+      optionPrice: 0,
+      hasQuantitySellLimit: false,
+      quantityLeft: 0,
+    });
+    const fruit = makeItem({
+      itemKey: 'fruit',
+      optionSets: [
+        {
+          optionSetKey: 'variety',
+          name: 'Variety',
+          minQuantity: 1,
+          maxQuantity: 1,
+          sequence: 0,
+          optionSetRenderType: 1,
+          options: [option('apple', true), option('banana', false)],
+        },
+      ],
+    });
+    const body = buildPlaceOrdersBody({
+      student,
+      service,
+      orders: [
+        {
+          date: '2026-10-08',
+          dueDate: '2026-10-08T12:40:00',
+          selections: [
+            {
+              item: fruit,
+              quantity: 1,
+              options: [{ optionKey: 'banana', quantity: 1 }],
+              questions: [],
+            },
+          ],
+        },
+      ],
+      feePerOrder: 0.33,
+      cartKey: 'c',
+      requestIds: ['r'],
+    });
+    expect(body.placeOrderRequests[0].items[0].options).toEqual([
+      { optionKey: 'banana', quantity: 1, isExcluded: false, isDefault: false },
+      { optionKey: 'apple', quantity: 1, isExcluded: true, isDefault: true },
+    ]);
+  });
 });
 
 describe('summariseOutcomes', () => {

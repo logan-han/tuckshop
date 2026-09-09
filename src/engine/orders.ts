@@ -3,6 +3,7 @@ import type {
   Menu,
   MenuItem,
   PlaceOrderError,
+  PlaceOrderOption,
   PlaceOrderRequest,
   PlaceOrdersBody,
   PlaceOrdersResponse,
@@ -97,6 +98,21 @@ export interface PlannedOrder {
   selections: Selection[];
 }
 
+/** Chosen options, then every default the parent unticked flagged isExcluded, as the portal sends them. */
+function orderOptions(selection: Selection): PlaceOrderOption[] {
+  const chosen = selection.options.map((choice) => ({
+    optionKey: choice.optionKey,
+    quantity: choice.quantity,
+    isExcluded: false,
+    isDefault: findOption(selection.item, choice.optionKey)?.isDefault ?? false,
+  }));
+  const unticked = selection.item.optionSets
+    .flatMap((set) => set.options)
+    .filter((o) => o.isDefault && !selection.options.some((c) => c.optionKey === o.optionKey))
+    .map((o) => ({ optionKey: o.optionKey, quantity: 1, isExcluded: true, isDefault: true }));
+  return [...chosen, ...unticked];
+}
+
 export function toPlaceOrderRequest(
   student: Student,
   service: StudentService,
@@ -113,12 +129,7 @@ export function toPlaceOrderRequest(
     items: order.selections.map((selection) => ({
       itemKey: selection.item.itemKey,
       quantity: selection.quantity,
-      options: selection.options.map((choice) => ({
-        optionKey: choice.optionKey,
-        quantity: choice.quantity,
-        isExcluded: false,
-        isDefault: findOption(selection.item, choice.optionKey)?.isDefault ?? false,
-      })),
+      options: orderOptions(selection),
       questions: selection.questions.map((q) => ({ questionKey: q.questionKey, answer: q.answer })),
     })),
     orderOrigin: 'Normal',

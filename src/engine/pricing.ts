@@ -25,13 +25,35 @@ export function findOption(item: MenuItem, optionKey: string): MenuOption | unde
   return undefined;
 }
 
-/** Price of one serve including its chosen options. */
-export function unitPrice(selection: Selection): number {
-  const extras = selection.options.reduce((sum, choice) => {
+/** The portal's PriceOption enum: how an item's options feed into its price. */
+export const PRICE_OPTION = {
+  SumOfOptions: 0,
+  ItemPrice: 1,
+  ItemPricePlusOptions: 2,
+  AllOptions: 3,
+} as const;
+
+function optionsPrice(selection: Selection, chargeDefaults: boolean): number {
+  return selection.options.reduce((sum, choice) => {
     const option = findOption(selection.item, choice.optionKey);
-    return sum + (option?.optionPrice ?? 0) * choice.quantity;
+    if (!option || (option.isDefault && !chargeDefaults)) return sum;
+    return sum + option.optionPrice * choice.quantity;
   }, 0);
-  return round2(selection.item.itemPrice + extras);
+}
+
+/** Price of one serve, worked out the way the portal does for the item's priceOption. */
+export function unitPrice(selection: Selection): number {
+  const { item } = selection;
+  switch (item.priceOption) {
+    case PRICE_OPTION.ItemPrice:
+      return round2(item.itemPrice);
+    case PRICE_OPTION.SumOfOptions:
+      return round2(optionsPrice(selection, false));
+    case PRICE_OPTION.AllOptions:
+      return round2(optionsPrice(selection, true));
+    default:
+      return round2(item.itemPrice + optionsPrice(selection, false));
+  }
 }
 
 export function lineTotal(selection: Selection): number {

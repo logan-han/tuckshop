@@ -38,6 +38,7 @@ const sandwich = makeItem({
   itemKey: 'byo',
   name: 'Build-Your-Own',
   itemPrice: 4.2,
+  priceOption: 2,
   optionSets: [
     {
       optionSetKey: 'bread',
@@ -138,6 +139,45 @@ describe('pricing', () => {
     expect(
       orderAmount([selection, { item: makeItem(), quantity: 1, options: [], questions: [] }]),
     ).toBe(11.1);
+  });
+
+  it('follows the item’s priceOption the way the portal does', () => {
+    const options = [
+      { optionKey: 'ham', quantity: 1 },
+      { optionKey: 'cheese', quantity: 1 },
+    ];
+    const priced = (priceOption: number): Selection => ({
+      item: { ...sandwich, priceOption },
+      quantity: 1,
+      options,
+      questions: [],
+    });
+    expect(unitPrice(priced(1))).toBe(4.2);
+    expect(unitPrice(priced(2))).toBe(5.7);
+    expect(unitPrice(priced(0))).toBe(1.5);
+    expect(unitPrice(priced(3))).toBe(1.5);
+  });
+
+  it('only charges a default option when the item prices all its options', () => {
+    const hamByDefault: MenuItem = {
+      ...sandwich,
+      optionSets: sandwich.optionSets.map((set) => ({
+        ...set,
+        options: set.options.map((o) => (o.optionKey === 'ham' ? { ...o, isDefault: true } : o)),
+      })),
+    };
+    const priced = (priceOption: number): Selection => ({
+      item: { ...hamByDefault, priceOption },
+      quantity: 1,
+      options: [
+        { optionKey: 'ham', quantity: 1 },
+        { optionKey: 'cheese', quantity: 1 },
+      ],
+      questions: [],
+    });
+    expect(unitPrice(priced(2))).toBe(4.7);
+    expect(unitPrice(priced(0))).toBe(0.5);
+    expect(unitPrice(priced(3))).toBe(1.5);
   });
 
   it('totals a term of orders with a fee on each', () => {
