@@ -389,6 +389,16 @@ a {
   }
 }
 
+/* a date with a lunch of its own */
+.chip[data-own]::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--go);
+}
+
 .date-row {
   display: flex;
   flex-wrap: wrap;

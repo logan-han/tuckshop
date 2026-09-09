@@ -6,6 +6,7 @@ import {
   planDates,
   retargetPlan,
   savePlan,
+  skipDate,
 } from './plan';
 
 beforeEach(() => window.localStorage.clear());
@@ -55,5 +56,19 @@ describe('plan presets by school', () => {
     expect(later.presetId).toBe('tintern-2027-t1');
     expect(later.weekdays).toEqual([1, 3]);
     expect(planDates(later, '2027-01-15')[0]).toBe('2027-02-03');
+  });
+});
+
+describe('skipping dates', () => {
+  it('skips a date once and keeps the skipped dates in order', () => {
+    const plan = { ...defaultPlan('2026-10-01', 'Tintern Grammar'), excluded: [] };
+    const once = skipDate(plan, '2026-10-22');
+    const twice = skipDate(skipDate(once, '2026-10-08'), '2026-10-22');
+    expect(twice.excluded).toEqual([
+      { date: '2026-10-08', reason: 'Skipped' },
+      { date: '2026-10-22', reason: 'Skipped' },
+    ]);
+    expect(planDates(twice, '2026-10-01')).not.toContain('2026-10-22');
+    expect(skipDate(once, '2026-10-22')).toBe(once);
   });
 });

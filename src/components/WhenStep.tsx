@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatShort, isIsoDate, WEEKDAYS, weekdayOf, type TermPreset } from '../engine/schedule';
-import { applyPreset, type Plan } from '../state/plan';
+import { applyPreset, skipDate, type Plan } from '../state/plan';
 
 interface Props {
   plan: Plan;
@@ -22,13 +22,8 @@ export default function WhenStep({ plan, presets, dates, onChange, onBack, onCon
   }
 
   function addExclusion() {
-    if (!isIsoDate(newExclusion) || plan.excluded.some((e) => e.date === newExclusion)) return;
-    onChange({
-      ...plan,
-      excluded: [...plan.excluded, { date: newExclusion, reason: 'Skipped' }].sort((a, b) =>
-        a.date.localeCompare(b.date),
-      ),
-    });
+    if (!isIsoDate(newExclusion)) return;
+    onChange(skipDate(plan, newExclusion));
     setNewExclusion('');
   }
 

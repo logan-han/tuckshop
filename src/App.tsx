@@ -13,9 +13,9 @@ import WhatStep from './components/WhatStep';
 import WhenStep from './components/WhenStep';
 import WhoStep from './components/WhoStep';
 import type { OrderOutcome } from './engine/orders';
-import type { SelectionsByDay } from './engine/selections';
+import { bagFor, EMPTY_BAGS, setBag, type Bags } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
-import { loadPlan, planDates, retargetPlan, savePlan, type Plan } from './state/plan';
+import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from './state/plan';
 
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
 
@@ -29,7 +29,7 @@ export default function App() {
   const [service, setService] = useState<StudentService | null>(null);
   const [fee, setFee] = useState<number | null>(null);
   const [plan, setPlan] = useState<Plan>(() => loadPlan(todayIso()));
-  const [selections, setSelections] = useState<SelectionsByDay>({});
+  const [bags, setBags] = useState<Bags>(EMPTY_BAGS);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function App() {
     setStudent(null);
     setService(null);
     setFee(null);
-    setSelections({});
+    setBags(EMPTY_BAGS);
     setStep('who');
     setView('plan');
     setBanner(message);
@@ -64,7 +64,7 @@ export default function App() {
   const chooseStudent = useCallback((s: Student, svc: StudentService) => {
     setStudent(s);
     setService(svc);
-    setSelections({});
+    setBags(EMPTY_BAGS);
     setPlan((current) => {
       const next = retargetPlan(current, todayIso(), s.schoolName);
       if (next !== current) savePlan(next);
@@ -199,8 +199,9 @@ export default function App() {
                 student={student}
                 service={service}
                 dates={dates}
-                selections={selections}
-                onChange={setSelections}
+                bags={bags}
+                onChange={setBags}
+                onSkipDate={(date) => updatePlan(skipDate(plan, date))}
                 onBack={() => setStep('when')}
                 onContinue={() => setStep('check')}
                 onError={handleError}
@@ -212,7 +213,7 @@ export default function App() {
                 student={student}
                 service={service}
                 dates={dates}
-                selections={selections}
+                bags={bags}
                 feePerOrder={fee}
                 wallet={wallet}
                 onBack={() => setStep('what')}
@@ -231,7 +232,7 @@ export default function App() {
                 studentName={student?.studentFirstName ?? 'your student'}
                 outcomes={outcomes}
                 onPlanAnother={() => {
-                  setSelections({});
+                  setBags(EMPTY_BAGS);
                   setStep('when');
                 }}
                 onShowOrders={() => setView('orders')}
@@ -244,15 +245,18 @@ export default function App() {
               service={service}
               weekdays={plan.weekdays}
               dates={dates}
-              selections={selections}
+              bags={bags}
               feePerOrder={fee}
               onRemove={
                 step === 'what'
-                  ? (day, index) =>
-                      setSelections({
-                        ...selections,
-                        [day]: (selections[day] ?? []).filter((_, i) => i !== index),
-                      })
+                  ? (ref, index) =>
+                      setBags(
+                        setBag(
+                          bags,
+                          ref,
+                          bagFor(bags, ref).filter((_, i) => i !== index),
+                        ),
+                      )
                   : undefined
               }
             />

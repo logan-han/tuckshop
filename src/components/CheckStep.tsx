@@ -13,7 +13,7 @@ import {
 } from '../engine/orders';
 import { cartTotals, formatMoney, orderAmount, type Selection } from '../engine/pricing';
 import { formatShort } from '../engine/schedule';
-import { selectionsForDate, type SelectionsByDay } from '../engine/selections';
+import { selectionsForDate, type Bags } from '../engine/selections';
 
 type Status = 'checking' | 'ok' | 'ordered' | 'closed' | 'cutoff' | 'unavailable' | 'error';
 
@@ -32,7 +32,7 @@ interface Props {
   student: Student;
   service: StudentService;
   dates: string[];
-  selections: SelectionsByDay;
+  bags: Bags;
   feePerOrder: number;
   wallet: Wallet | null;
   onBack: () => void;
@@ -54,7 +54,7 @@ export default function CheckStep({
   student,
   service,
   dates,
-  selections,
+  bags,
   feePerOrder,
   wallet,
   onBack,
@@ -129,7 +129,7 @@ export default function CheckStep({
         }
 
         await mapWithConcurrency(toFetch, 4, async ({ date, dueDate }) => {
-          const chosen = selectionsForDate(selections, date);
+          const chosen = selectionsForDate(bags, date);
           if (chosen.length === 0) {
             update(date, { status: 'unavailable', dueDate, detail: 'Nothing chosen for this day' });
             return;
@@ -173,7 +173,7 @@ export default function CheckStep({
     return () => {
       cancelled = true;
     };
-  }, [student, service, dates, selections, onError]);
+  }, [student, service, dates, bags, onError]);
 
   const included = rows.filter((row) => row.include && row.dueDate);
   const totals = cartTotals(
@@ -270,9 +270,8 @@ export default function CheckStep({
                                   // An "already ordered" date has no checked menu; order the plan as chosen.
                                   selections: r.selections.length
                                     ? r.selections
-                                    : selectionsForDate(selections, r.date),
-                                  amount:
-                                    r.amount || orderAmount(selectionsForDate(selections, r.date)),
+                                    : selectionsForDate(bags, r.date),
+                                  amount: r.amount || orderAmount(selectionsForDate(bags, r.date)),
                                 }
                               : r,
                           ),

@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError } from '../api/errors';
 import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
-import type { Menu, MenuItem, Student, StudentService } from '../api/types';
+import type { FulfillmentDate, Menu, MenuItem, Student, StudentService } from '../api/types';
 import { formatMoney, missingChoices, type Selection } from '../engine/pricing';
 import { formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
 import {
+  bagFor,
   copyToAllDays,
-  daysWithoutFood,
-  withDay,
-  type SelectionsByDay,
+  datesWithoutFood,
+  describeMissing,
+  hasOwnBag,
+  selectionsForDate,
+  setBag,
+  type BagRef,
+  type Bags,
 } from '../engine/selections';
 import ItemDialog from './ItemDialog';
 
@@ -18,41 +23,79 @@ interface Props {
   service: StudentService;
   /** Planned dates, ascending. */
   dates: string[];
-  selections: SelectionsByDay;
-  onChange: (selections: SelectionsByDay) => void;
+  bags: Bags;
+  onChange: (bags: Bags) => void;
+  /** Takes a date out of the plan altogether. */
+  onSkipDate: (date: string) => void;
   onBack: () => void;
   onContinue: () => void;
   onError: (error: unknown) => void;
 }
 
-interface Loaded {
-  /** Which student/service/dates this menu belongs to; a stale load is simply ignored. */
+interface Calendar {
+  /** Which student/service/dates this belongs to; a stale load is simply ignored. */
   key: string;
-  menu: Menu | null;
-  /** The planned date whose menu is shown. */
-  date: string | null;
+  entries: Map<string, FulfillmentDate> | null;
   error: string | null;
+}
+
+interface MenuLoad {
+  menu: Menu | null;
+  error: string | null;
+}
+
+/** Menus already fetched for this student/service/dates, by planned date. */
+interface Menus {
+  key: string;
+  byDate: Record<string, MenuLoad>;
+}
+
+function orderable(entry: FulfillmentDate | undefined): entry is FulfillmentDate {
+  return !!entry && !entry.closureReason && !entry.hasCutOffTimePassed;
+}
+
+/** "nothing yet", "2 × Chicken Tenders (2)", "3 items" */
+function summarise(items: Selection[]): string {
+  if (items.length === 0) return 'nothing yet';
+  if (items.length > 1) return `${items.length} items`;
+  const [only] = items;
+  return `${only.quantity > 1 ? `${only.quantity} × ` : ''}${only.item.name.split(' - ')[0]}`;
+}
+
+function nameOf(day: number): string {
+  return WEEKDAYS.find((w) => w.value === day)?.long ?? '';
 }
 
 export default function WhatStep({
   student,
   service,
   dates,
-  selections,
+  bags,
   onChange,
+  onSkipDate,
   onBack,
   onContinue,
   onError,
 }: Props) {
   const weekdays = useMemo(() => [...new Set(dates.map(weekdayOf))].sort(), [dates]);
-  const [activeDay, setActiveDay] = useState(weekdays[0] ?? 4);
-  const day = weekdays.includes(activeDay) ? activeDay : (weekdays[0] ?? 4);
-  const dayDates = useMemo(() => dates.filter((date) => weekdayOf(date) === day), [dates, day]);
-  const dayName = WEEKDAYS.find((w) => w.value === day)?.long ?? '';
-  const dayItems = selections[day] ?? [];
+  const [target, setTarget] = useState<BagRef>({ day: weekdays[0] ?? 4 });
 
-  const key = `${student.studentKey}|${service.supplierServiceKey}|${dayDates.join(',')}`;
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // Whatever was being looked at, kept on a date and weekday that are still in the plan.
+  const ref = useMemo<BagRef>(() => {
+    if (target.date !== undefined && dates.includes(target.date)) return target;
+    const day = target.date !== undefined ? weekdayOf(target.date) : target.day;
+    return { day: weekdays.includes(day) ? day : (weekdays[0] ?? 4) };
+  }, [target, dates, weekdays]);
+  const day = ref.date === undefined ? ref.day : weekdayOf(ref.date);
+  const dayName = nameOf(day);
+  const dayDates = useMemo(() => dates.filter((date) => weekdayOf(date) === day), [dates, day]);
+  const items = bagFor(bags, ref);
+  const own = ref.date !== undefined && hasOwnBag(bags, ref.date);
+
+  const key = `${student.studentKey}|${service.supplierServiceKey}|${dates.join(',')}`;
+  const [calendar, setCalendar] = useState<Calendar | null>(null);
+  const [menus, setMenus] = useState<Menus>({ key, byDate: {} });
+  const inFlight = useRef(new Set<string>());
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<MenuItem | null>(null);
 
@@ -60,23 +103,45 @@ export default function WhatStep({
     let cancelled = false;
     (async () => {
       try {
-        // The first few weeks are enough to find one orderable date to borrow the menu from.
-        const sample = dayDates.slice(0, 10);
-        const fulfilment = await getFulfillmentDatesFor(
+        const entries = await getFulfillmentDatesFor(
           student.studentKey,
           service.supplierServiceKey,
-          sample,
+          dates,
         );
-        const date = sample.find((d) => {
-          const entry = fulfilment.get(d);
-          return entry && !entry.closureReason && !entry.hasCutOffTimePassed;
-        });
-        const entry = date ? fulfilment.get(date) : undefined;
-        if (!date || !entry) {
-          throw new Error(
-            'None of the chosen dates can be ordered for. Check the days and term dates.',
-          );
-        }
+        if (!cancelled) setCalendar({ key, entries, error: null });
+      } catch (e) {
+        if (cancelled) return;
+        onError(e);
+        setCalendar({ key, entries: null, error: describeError(e) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [key, student, service, dates, onError]);
+
+  const cal = calendar && calendar.key === key ? calendar : null;
+
+  /** The date whose menu is shown: the date itself, or the first orderable date of the weekday. */
+  const menuDate = useMemo(() => {
+    if (!cal?.entries) return null;
+    const entries = cal.entries;
+    if (ref.date !== undefined) return orderable(entries.get(ref.date)) ? ref.date : null;
+    return dayDates.find((date) => orderable(entries.get(date))) ?? null;
+  }, [cal, ref, dayDates]);
+
+  const loaded = menus.key === key && menuDate ? menus.byDate[menuDate] : undefined;
+
+  useEffect(() => {
+    if (!menuDate || loaded) return;
+    const entry = cal?.entries?.get(menuDate);
+    if (!entry) return;
+    const flight = `${key}|${menuDate}`;
+    if (inFlight.current.has(flight)) return;
+    inFlight.current.add(flight);
+    (async () => {
+      let load: MenuLoad;
+      try {
         const menu = await getMenu({
           supplierKey: service.supplierKey,
           supplierServiceKey: service.supplierServiceKey,
@@ -84,25 +149,27 @@ export default function WhatStep({
           schoolKey: student.schoolKey,
           dueDate: entry.fulfillmentDate,
         });
-        if (!cancelled) setLoaded({ key, menu, date, error: null });
+        load = { menu, error: null };
       } catch (e) {
-        if (cancelled) return;
         onError(e);
-        setLoaded({ key, menu: null, date: null, error: describeError(e) });
+        load = { menu: null, error: describeError(e) };
       }
+      inFlight.current.delete(flight);
+      // Worth keeping even if the parent has moved on to another date meanwhile.
+      setMenus((current) =>
+        current.key === key
+          ? { key, byDate: { ...current.byDate, [menuDate]: load } }
+          : { key, byDate: { [menuDate]: load } },
+      );
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [key, student, service, dayDates, onError]);
+  }, [key, menuDate, loaded, cal, student, service, onError]);
 
-  const current = loaded && loaded.key === key ? loaded : null;
   const closeDialog = useCallback(() => setEditing(null), []);
 
   const categories = useMemo(() => {
-    if (!current?.menu) return [];
+    if (!loaded?.menu) return [];
     const needle = query.trim().toLowerCase();
-    return current.menu.itemCategories
+    return loaded.menu.itemCategories
       .map((category) => ({
         ...category,
         items: category.items.filter(
@@ -113,35 +180,63 @@ export default function WhatStep({
         ),
       }))
       .filter((category) => category.items.length > 0);
-  }, [current, query]);
+  }, [loaded, query]);
 
-  const empty = daysWithoutFood(selections, weekdays);
-  const incomplete = weekdays.flatMap((d) =>
-    (selections[d] ?? []).filter((s) => missingChoices(s).length > 0),
+  let blocker: string | null = null;
+  if (cal?.entries && !menuDate) {
+    if (ref.date === undefined) {
+      blocker = 'None of the chosen dates can be ordered for. Check the days and term dates.';
+    } else {
+      const entry = cal.entries.get(ref.date);
+      blocker = !entry
+        ? 'This date is not on the canteen calendar.'
+        : entry.closureReason
+          ? `The canteen is closed on this date: ${entry.closureReason}.`
+          : 'The cut-off time for this date has passed.';
+    }
+  }
+
+  /** What a date chip says under the date: its own lunch, or why it cannot be ordered for. */
+  function dateNote(date: string): string | null {
+    if (hasOwnBag(bags, date)) return summarise(bags.byDate[date]);
+    if (!cal?.entries) return null;
+    const entry = cal.entries.get(date);
+    if (!entry) return 'not on the calendar';
+    if (entry.closureReason) return 'closed';
+    if (entry.hasCutOffTimePassed) return 'too late';
+    return null;
+  }
+
+  const missing = datesWithoutFood(bags, dates);
+  const incomplete = [...new Set(dates.flatMap((date) => selectionsForDate(bags, date)))].filter(
+    (s) => missingChoices(s).length > 0,
   );
+  const emptyDays = weekdays.filter((d) => (bags.byDay[d]?.length ?? 0) === 0);
   const otherDaysEmpty =
-    weekdays.length > 1 && empty.length === weekdays.length - 1 && dayItems.length > 0;
+    weekdays.length > 1 &&
+    emptyDays.length === weekdays.length - 1 &&
+    (bags.byDay[day]?.length ?? 0) > 0;
 
   function save(selection: Selection) {
-    const index = dayItems.findIndex((s) => s.item.itemKey === selection.item.itemKey);
+    const index = items.findIndex((s) => s.item.itemKey === selection.item.itemKey);
     const next =
-      index === -1
-        ? [...dayItems, selection]
-        : dayItems.map((s, i) => (i === index ? selection : s));
-    onChange(withDay(selections, day, next));
+      index === -1 ? [...items, selection] : items.map((s, i) => (i === index ? selection : s));
+    onChange(setBag(bags, ref, next));
     setEditing(null);
   }
 
   function remove(itemKey: string) {
     onChange(
-      withDay(
-        selections,
-        day,
-        dayItems.filter((s) => s.item.itemKey !== itemKey),
+      setBag(
+        bags,
+        ref,
+        items.filter((s) => s.item.itemKey !== itemKey),
       ),
     );
     setEditing(null);
   }
+
+  const serviceName = service.supplierServiceName.trim();
 
   return (
     <section aria-labelledby="what-title">
@@ -161,17 +256,16 @@ export default function WhatStep({
           </span>
           <div className="chips" role="group" aria-labelledby="day-tabs-label">
             {weekdays.map((d) => {
-              const count = selections[d]?.length ?? 0;
-              const name = WEEKDAYS.find((w) => w.value === d)?.long ?? '';
+              const count = bags.byDay[d]?.length ?? 0;
               return (
                 <button
                   key={d}
                   type="button"
                   className="chip"
                   aria-pressed={d === day}
-                  onClick={() => setActiveDay(d)}
+                  onClick={() => setTarget({ day: d })}
                 >
-                  {name}s
+                  {nameOf(d)}s
                   <span className="hint">
                     {count === 0 ? 'nothing yet' : `${count} ${count === 1 ? 'item' : 'items'}`}
                   </span>
@@ -184,7 +278,7 @@ export default function WhatStep({
               <button
                 type="button"
                 className="link-button"
-                onClick={() => onChange(copyToAllDays(selections, day, weekdays))}
+                onClick={() => onChange(copyToAllDays(bags, day, weekdays))}
               >
                 Use {dayName}’s lunch for every day
               </button>
@@ -193,19 +287,101 @@ export default function WhatStep({
         </div>
       )}
 
-      {current?.error && (
+      {dayDates.length > 1 && (
+        <div className="field">
+          <span className="field__label" id="date-chips-label">
+            Lunch for
+          </span>
+          <div className="chips" role="group" aria-labelledby="date-chips-label">
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={ref.date === undefined}
+              onClick={() => setTarget({ day })}
+            >
+              Every {dayName}
+              <span className="hint">{summarise(bags.byDay[day] ?? [])}</span>
+            </button>
+            {dayDates.map((date) => {
+              const note = dateNote(date);
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  className="chip"
+                  data-own={hasOwnBag(bags, date) || undefined}
+                  aria-pressed={ref.date === date}
+                  onClick={() => setTarget({ date })}
+                >
+                  {formatShort(date)}
+                  {note && <span className="hint">{note}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {cal?.error && (
         <p className="notice notice--bad" role="alert">
-          {current.error}
+          {cal.error}
         </p>
       )}
-      {!current && <p className="hint">Loading the menu…</p>}
+      {!cal && <p className="hint">Checking the canteen calendar…</p>}
+      {blocker && (
+        <p className="notice notice--warn" role="alert">
+          {blocker}
+          {ref.date !== undefined && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={() => onSkipDate(ref.date)}>
+                Skip this date
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {menuDate && !loaded && <p className="hint">Loading the menu…</p>}
+      {loaded?.error && (
+        <p className="notice notice--bad" role="alert">
+          {loaded.error}
+        </p>
+      )}
 
-      {current?.menu && current.date && (
+      {loaded?.menu && menuDate && (
         <>
           <p className="hint" style={{ marginBottom: '1rem' }}>
-            Showing the {service.supplierServiceName.trim()} menu for {formatShort(current.date)}
-            {weekdays.length > 1 ? `, the first ${dayName}` : ''}. Daily specials change from day to
-            day; every date gets checked before anything is ordered.
+            {ref.date === undefined ? (
+              <>
+                Showing the {serviceName} menu for {formatShort(menuDate)}
+                {dayDates.length > 1 ? `, the first ${dayName}` : ''}. Daily specials change from
+                day to day; every date gets checked before anything is ordered.
+                {dayDates.length > 1 ? ' Pick a date above to give it something different.' : ''}
+              </>
+            ) : own ? (
+              <>
+                {formatShort(menuDate)} has a lunch of its own.{' '}
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => onChange(setBag(bags, ref, []))}
+                >
+                  Same as every {dayName}
+                </button>
+                {' · '}
+                <button type="button" className="link-button" onClick={() => onSkipDate(menuDate)}>
+                  Skip this date
+                </button>
+              </>
+            ) : (
+              <>
+                Showing the {serviceName} menu for {formatShort(menuDate)}. This date gets every{' '}
+                {dayName}’s lunch; change anything here to give it its own.{' '}
+                <button type="button" className="link-button" onClick={() => onSkipDate(menuDate)}>
+                  Skip this date
+                </button>
+              </>
+            )}
           </p>
           <div className="field menu-search">
             <label className="visually-hidden" htmlFor="menu-search">
@@ -230,7 +406,7 @@ export default function WhatStep({
                 {category.name}
               </h3>
               {category.items.map((item) => {
-                const chosen = dayItems.find((s) => s.item.itemKey === item.itemKey);
+                const chosen = items.find((s) => s.item.itemKey === item.itemKey);
                 const soldOut = !item.inStock;
                 return (
                   <button
@@ -266,9 +442,9 @@ export default function WhatStep({
 
       {editing && (
         <ItemDialog
-          key={`${day}-${editing.itemKey}`}
+          key={`${ref.date ?? ref.day}-${editing.itemKey}`}
           item={editing}
-          existing={dayItems.find((s) => s.item.itemKey === editing.itemKey) ?? null}
+          existing={items.find((s) => s.item.itemKey === editing.itemKey) ?? null}
           onSave={save}
           onRemove={() => remove(editing.itemKey)}
           onClose={closeDialog}
@@ -282,16 +458,13 @@ export default function WhatStep({
         <button
           type="button"
           className="button"
-          disabled={empty.length > 0 || incomplete.length > 0}
+          disabled={missing.length > 0 || incomplete.length > 0}
           onClick={onContinue}
         >
           Check every date
         </button>
-        {empty.length > 0 && weekdays.length > 1 && (
-          <span className="hint">
-            Still nothing for{' '}
-            {empty.map((d) => `${WEEKDAYS.find((w) => w.value === d)?.long}s`).join(' and ')}.
-          </span>
+        {missing.length > 0 && (weekdays.length > 1 || missing.length < dates.length) && (
+          <span className="hint">Still nothing for {describeMissing(missing, dates)}.</span>
         )}
         {incomplete.length > 0 && (
           <span className="hint">

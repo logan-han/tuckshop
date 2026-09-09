@@ -44,6 +44,15 @@ export function retargetPlan(plan: Plan, today: string, schoolName?: string | nu
   return applyPreset(plan, currentPreset(today, schoolName).id);
 }
 
+/** Takes a date out of the plan; a date already skipped is left as it is. */
+export function skipDate(plan: Plan, date: string, reason = 'Skipped'): Plan {
+  if (plan.excluded.some((e) => e.date === date)) return plan;
+  const excluded = [...plan.excluded, { date, reason }].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  return { ...plan, excluded };
+}
+
 export function loadPlan(today: string, schoolName?: string | null): Plan {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
