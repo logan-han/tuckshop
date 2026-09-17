@@ -6,18 +6,64 @@
     <title>Tuckshop – recurring school lunch orders for Flexischools</title>
     <meta
       name="description"
-      content="Order the same school lunch every Monday, Thursday or whichever days you like, for the whole term, in one go. Works with your existing Flexischools account and runs entirely in your browser."
+      content="Order the same school lunch every week for a whole term in one go. Works with your existing Flexischools account and runs entirely in your browser."
     />
+    <meta name="author" content="Logan Han" />
+    <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#d8b98a" />
+    <meta name="msapplication-TileColor" content="#d8b98a" />
     <link rel="canonical" href="https://tuckshop.han.life/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tuckshop" />
+    <meta property="og:locale" content="en_AU" />
     <meta property="og:url" content="https://tuckshop.han.life/" />
     <meta property="og:title" content="Tuckshop – recurring school lunch orders" />
     <meta
       property="og:description"
       content="Pick the days, pick the food, place the whole term of Flexischools lunch orders at once."
     />
+    <meta property="og:image" content="https://tuckshop.han.life/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="A paper lunch bag beside the words: the same lunch, every Thursday, all term."
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://tuckshop.han.life/" />
+    <meta name="twitter:title" content="Tuckshop – recurring school lunch orders" />
+    <meta
+      name="twitter:description"
+      content="Pick the days, pick the food, place the whole term of Flexischools lunch orders at once."
+    />
+    <meta name="twitter:image" content="https://tuckshop.han.life/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="A paper lunch bag beside the words: the same lunch, every Thursday, all term."
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Tuckshop",
+        "url": "https://tuckshop.han.life/",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any modern web browser",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": "en-AU",
+        "isAccessibleForFree": true,
+        "description": "Places recurring school lunch orders through an existing Flexischools account: pick the days of the week and the term, pick the food, and order every date at once.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "AUD" },
+        "author": { "@type": "Person", "name": "Logan Han", "url": "https://han.life/" }
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -37,20 +83,42 @@
         document.head.appendChild(ga);
       }
     </script>
-    <noscript>
-      <style>
-        #root::before {
-          content: 'Tuckshop runs in your browser and needs JavaScript. Your Flexischools login is only ever sent to Flexischools.';
-          display: block;
-          font-family: system-ui, sans-serif;
-          max-width: 40rem;
-          margin: 4rem auto;
-          padding: 0 1rem;
-        }
-      </style>
-    </noscript>
+    <style>
+      /* Only ever seen without JavaScript, so it cannot lean on the app's stylesheet. */
+      .no-js {
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        color: #1b1a17;
+        max-width: 40rem;
+        margin: 4rem auto;
+        padding: 0 1rem;
+      }
+      .no-js h1 {
+        font-size: 1.75rem;
+        margin: 0 0 1rem;
+      }
+      .no-js p {
+        margin: 0 0 1rem;
+      }
+    </style>
   </head>
   <body>
+    <noscript>
+      <div class="no-js">
+        <h1>The same lunch, every Thursday, for the whole term</h1>
+        <p>
+          Tuckshop places recurring school lunch orders through your own Flexischools account. Pick
+          the days of the week and the term dates, pick anything from the canteen menu, and every
+          date is checked for closures, cut-offs, sold-out items and lunches you already ordered
+          before the whole lot goes in at once. Orders can be cancelled here too, refunded to the
+          Flexischools wallet.
+        </p>
+        <p>
+          It runs entirely in your browser and needs JavaScript. Your Flexischools email and
+          password are only ever sent to Flexischools.
+        </p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
