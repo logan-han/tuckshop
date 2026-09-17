@@ -1,5 +1,7 @@
 # tuckshop
 
+[![codecov](https://codecov.io/gh/logan-han/tuckshop/graph/badge.svg?token=edAL7piUrc)](https://codecov.io/gh/logan-han/tuckshop)
+
 Recurring school lunch orders for [Flexischools](https://www.flexischools.com.au), at
 [tuckshop.han.life](https://tuckshop.han.life). "Chicken tenders every Thursday this term"
 becomes one screen and one button instead of a dozen trips through the ordering portal.
