@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MenuItem, MenuOption, MenuOptionSet } from '../api/types';
+import type { Selection } from '../engine/pricing';
 import { makeItem } from '../engine/pricing.test';
 import ItemDialog from './ItemDialog';
 
@@ -54,18 +55,20 @@ const yoghurt: MenuItem = makeItem({
   optionSets: [flavourSet()],
 });
 
-function renderDialog(item: MenuItem) {
+function renderDialog(item: MenuItem, existing: Selection | null = null) {
   const onSave = vi.fn();
+  const onRemove = vi.fn();
+  const onClose = vi.fn();
   render(
     <ItemDialog
       item={item}
-      existing={null}
+      existing={existing}
       onSave={onSave}
-      onRemove={() => {}}
-      onClose={() => {}}
+      onRemove={onRemove}
+      onClose={onClose}
     />,
   );
-  return onSave;
+  return Object.assign(onSave, { onSave, onRemove, onClose });
 }
 
 describe('ItemDialog', () => {
@@ -144,5 +147,94 @@ describe('ItemDialog', () => {
     expect(screen.getByText('Strawberry')).toBeInTheDocument();
     expect(screen.queryByText('Old flavour')).not.toBeInTheDocument();
     expect(document.querySelector('.dialog__price')).toHaveTextContent(/^\$0\.00$/);
+  });
+
+  it('carries the answers to the canteen’s questions', async () => {
+    const user = userEvent.setup();
+    const onSave = renderDialog(
+      makeItem({
+        ...yoghurt,
+        optionSets: [],
+        questionSets: [
+          {
+            questionSetKey: 'notes',
+            questions: [{ questionKey: 'name', name: 'Name on the bag' }],
+          },
+        ],
+      }),
+    );
+
+    await user.type(screen.getByLabelText('Name on the bag'), 'Sam');
+    await user.click(screen.getByRole('button', { name: /Add to the bag/ }));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ questions: [{ questionKey: 'name', answer: 'Sam' }] }),
+    );
+  });
+
+  it('counts serves up and down, stopping at one and at what is left', async () => {
+    const user = userEvent.setup();
+    const onSave = renderDialog(
+      makeItem({ itemPrice: 4.9, priceOption: 1, hasQuantitySellLimit: true, quantityLeft: 2 }),
+    );
+
+    expect(screen.getByText('2 left for the first date')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'One fewer' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'One more' }));
+    expect(screen.getByRole('button', { name: /Add to the bag/ })).toHaveTextContent('$9.80');
+    // Only two left, so the stepper will not go past it.
+    expect(screen.getByRole('button', { name: 'One more' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'One fewer' }));
+    await user.click(screen.getByRole('button', { name: /Add to the bag/ }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ quantity: 1 }));
+  });
+
+  it('opens on what is already in the bag, and can take it back out', async () => {
+    const user = userEvent.setup();
+    const item = makeItem({ ...yoghurt, optionSets: [flavourSet()] });
+    const dialog = renderDialog(item, {
+      item,
+      quantity: 2,
+      options: [{ optionKey: 'mango', quantity: 1 }],
+      questions: [],
+    });
+
+    expect(screen.getByRole('checkbox', { name: /Mango/ })).toBeChecked();
+    expect(screen.getByRole('button', { name: /Update/ })).toHaveTextContent('$3.00');
+
+    await user.click(screen.getByRole('button', { name: 'Take out of the bag' }));
+    expect(dialog.onRemove).toHaveBeenCalled();
+  });
+
+  it('ticks the canteen’s own default options to start with', () => {
+    renderDialog(
+      makeItem({
+        ...yoghurt,
+        optionSets: [
+          flavourSet({
+            options: [
+              option('straw', 'Strawberry', 1.5, { isDefault: true }),
+              option('mango', 'Mango', 1.5),
+              option('gone', 'Sold-out flavour', 1.5, { inStock: false }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(screen.getByRole('checkbox', { name: /Strawberry/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Sold-out flavour/ })).toBeDisabled();
+    expect(screen.getByText('sold out')).toBeInTheDocument();
+  });
+
+  it('shows a real description and closes when the dialog is dismissed', async () => {
+    const user = userEvent.setup();
+    const dialog = renderDialog(
+      makeItem({ ...yoghurt, optionSets: [], description: '<p>Two tenders  with sauce</p>' }),
+    );
+    expect(screen.getByText('· Two tenders with sauce')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(dialog.onClose).toHaveBeenCalled();
   });
 });

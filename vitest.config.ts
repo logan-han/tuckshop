@@ -12,7 +12,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/**'],
-      exclude: ['src/main.tsx', 'src/**/*.d.ts'],
+      exclude: ['src/main.tsx', 'src/**/*.d.ts', 'src/test/**'],
     },
   },
 });
