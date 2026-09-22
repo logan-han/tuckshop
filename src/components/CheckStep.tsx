@@ -37,6 +37,8 @@ interface Props {
   bags: Bags;
   feePerOrder: number;
   wallet: Wallet | null;
+  /** Reads the wallet again, e.g. after a top-up in Flexischools. */
+  onRefreshWallet: () => Promise<void>;
   onBack: () => void;
   onPlaced: (outcomes: OrderOutcome[], orders: PlannedOrder[]) => void;
   onError: (error: unknown) => void;
@@ -63,6 +65,7 @@ export default function CheckStep({
   bags,
   feePerOrder,
   wallet,
+  onRefreshWallet,
   onBack,
   onPlaced,
   onError,
@@ -81,6 +84,7 @@ export default function CheckStep({
   );
   const [checking, setChecking] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -328,7 +332,22 @@ export default function CheckStep({
           >
             Flexischools
           </a>{' '}
-          first, or untick some dates.
+          first, or untick some dates.{' '}
+          <button
+            type="button"
+            className="link-button"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await onRefreshWallet();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh the balance'}
+          </button>
         </p>
       )}
 

@@ -68,11 +68,16 @@ export default function App() {
     [signOut],
   );
 
+  const refreshWallet = useCallback(
+    () => getWallet().then(setWallet).catch(handleError),
+    [handleError],
+  );
+
   /** After orders are placed or cancelled: the wallet and the list of existing orders both moved. */
   const refreshAccount = useCallback(() => {
-    getWallet().then(setWallet).catch(handleError);
+    refreshWallet();
     setOrdersEpoch((n) => n + 1);
-  }, [handleError]);
+  }, [refreshWallet]);
 
   /** Selecting a student also points the plan at a term their school actually has. */
   const chooseStudent = useCallback((s: Student, svc: StudentService) => {
@@ -139,6 +144,16 @@ export default function App() {
       cancelled = true;
     };
   }, [student, service, handleError]);
+
+  // Top-ups happen in Flexischools, usually in another tab, so read the wallet again on return.
+  useEffect(() => {
+    if (!session) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshWallet();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [session, refreshWallet]);
 
   // Each step starts at the top; on a phone the button that got you here sits far down the page.
   useEffect(() => {
@@ -257,6 +272,7 @@ export default function App() {
                 bags={bags}
                 feePerOrder={fee}
                 wallet={wallet}
+                onRefreshWallet={refreshWallet}
                 onBack={() => setStep('what')}
                 onPlaced={(result) => {
                   setOutcomes(result);

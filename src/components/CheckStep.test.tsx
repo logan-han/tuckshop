@@ -58,6 +58,7 @@ function renderStep(overrides: Partial<Parameters<typeof CheckStep>[0]> = {}) {
   const onBack = vi.fn();
   const onPlaced = vi.fn();
   const onError = vi.fn();
+  const onRefreshWallet = vi.fn(() => Promise.resolve());
   render(
     <CheckStep
       student={student}
@@ -66,13 +67,14 @@ function renderStep(overrides: Partial<Parameters<typeof CheckStep>[0]> = {}) {
       bags={{ byDay: { 4: [makeSelection(tenders)] }, byDate: {} }}
       feePerOrder={0.33}
       wallet={wallet}
+      onRefreshWallet={onRefreshWallet}
       onBack={onBack}
       onPlaced={onPlaced}
       onError={onError}
       {...overrides}
     />,
   );
-  return { onBack, onPlaced, onError };
+  return { onBack, onPlaced, onError, onRefreshWallet };
 }
 
 function row(date: string) {
@@ -238,6 +240,19 @@ describe('CheckStep', () => {
       'href',
       'https://user.flexischools.com.au/login?returnUrl=/wallet-topup',
     );
+  });
+
+  it('reads the wallet again when asked, say after a top-up', async () => {
+    let finish = () => {};
+    const onRefreshWallet = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    const user = userEvent.setup();
+    renderStep({ wallet: { ...wallet, availableBalance: 5 }, onRefreshWallet });
+
+    await user.click(await screen.findByRole('button', { name: 'Refresh the balance' }));
+    expect(onRefreshWallet).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled();
+    finish();
+    expect(await screen.findByRole('button', { name: 'Refresh the balance' })).toBeEnabled();
   });
 
   it('leaves the wallet out of it when there is no wallet to read', async () => {

@@ -260,6 +260,39 @@ describe('App, from the plan to the orders', () => {
     expect(screen.getByText('No upcoming lunch orders.')).toBeInTheDocument();
   });
 
+  it('reads the wallet again after a top-up in Flexischools', async () => {
+    let balance = 5;
+    respondExcept(
+      '/payments/user-account',
+      () =>
+        new Response(
+          JSON.stringify({ accountKey: 'a', availableBalance: balance, topUpAmountOptions: [] }),
+        ),
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await signInAs(user);
+
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    await user.click(screen.getByRole('button', { name: 'Check every date' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The wallet is $5.46 short.');
+
+    // Topped up from a phone while this tab stayed open.
+    balance = 8;
+    await user.click(screen.getByRole('button', { name: 'Refresh the balance' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('The wallet is $2.46 short.'),
+    );
+
+    // Topped up in the Flexischools tab, then back to this one.
+    balance = 20;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Place 2 orders for $10.46' })).toBeEnabled();
+  });
+
   it('keeps the bag but starts the plan again when more lunches are wanted', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<App />);
