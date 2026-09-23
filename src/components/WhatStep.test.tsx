@@ -290,9 +290,40 @@ describe('WhatStep', () => {
     });
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Sam already has an order for Thu 8 Oct (Chicken Tenders (2)) and Thu 22 Oct (Chicken Tenders (2)). Anything chosen here goes in as an extra order for those days.',
+      'Sam already has an order for 2 of these Thursdays: Chicken Tenders (2) on 8 Oct and 22 Oct. Those dates start unticked at the check; tick them there to order extra.',
     );
     expect(screen.getByRole('button', { name: /8 Oct ordered/ })).toBeInTheDocument();
+  });
+
+  it('groups already-ordered dates by what they hold, and names the one date being edited', async () => {
+    const user = userEvent.setup();
+    const sushiOrder = makeHistoryOrder(THURSDAYS[1], {
+      orderItems: [
+        {
+          orderItemId: 2,
+          itemId: 2,
+          itemDisplayName: 'Sushi Roll - Tuna',
+          quantityOrdered: 1,
+          predefined: false,
+        },
+      ],
+    });
+    renderStep({
+      existing: new Map([
+        [THURSDAYS[0], [makeHistoryOrder(THURSDAYS[0])]],
+        [THURSDAYS[1], [sushiOrder]],
+        [THURSDAYS[2], [makeHistoryOrder(THURSDAYS[2])]],
+      ]),
+    });
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Sam already has an order for 3 of these Thursdays: Chicken Tenders (2) on 8 Oct and 22 Oct; Sushi Roll on 15 Oct.',
+    );
+
+    await user.click(screen.getByRole('button', { name: /15 Oct ordered/ }));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sam already has an order for Thu 15 Oct (Sushi Roll). The date starts unticked at the check; tick it there to order extra.',
+    );
   });
 
   it('leaves the empty dates out rather than blocking the plan', async () => {

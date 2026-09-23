@@ -36,10 +36,9 @@ export default function DoneStep({ studentName, outcomes, onPlanAnother, onShowO
         {outcomes.map((outcome) => (
           <li className="order" key={outcome.date}>
             <span className="order__date">{formatShort(outcome.date)}</span>
-            <span className={`status status--${outcome.placed ? 'ok' : 'bad'}`}>
+            <span className={`order__details status status--${outcome.placed ? 'ok' : 'bad'}`}>
               {outcome.message}
             </span>
-            <span />
           </li>
         ))}
       </ul>

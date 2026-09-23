@@ -4,7 +4,7 @@ import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
 import type { FulfillmentDate, Menu, MenuItem, Student, StudentService } from '../api/types';
 import { describeOrders, type ExistingOrders } from '../engine/orders';
-import { formatMoney, missingChoices, type Selection } from '../engine/pricing';
+import { formatMoney, missingChoices, splitName, type Selection } from '../engine/pricing';
 import { formatDayMonth, formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
 import {
   bagFor,
@@ -12,6 +12,7 @@ import {
   datesWithoutFood,
   describeMissing,
   hasOwnBag,
+  joinAnd,
   selectionsForDate,
   setBag,
   type BagRef,
@@ -67,6 +68,21 @@ function summarise(items: Selection[]): string {
 
 function nameOf(day: number): string {
   return WEEKDAYS.find((w) => w.value === day)?.long ?? '';
+}
+
+/**
+ * What is already ordered, dates grouped by what they hold, since a recurring lunch is
+ * usually the same each week: "Hot Dog on 9 Oct, 16 Oct and 23 Oct; Sushi Roll on 30 Oct".
+ */
+function describeOrdered(dates: string[], existing: ExistingOrders): string {
+  const byWhat = new Map<string, string[]>();
+  for (const date of dates) {
+    const what = describeOrders(existing.get(date) ?? []);
+    byWhat.set(what, [...(byWhat.get(what) ?? []), formatDayMonth(date)]);
+  }
+  return [...byWhat]
+    .map(([what, on]) => (what ? `${what} on ${joinAnd(on)}` : joinAnd(on)))
+    .join('; ');
 }
 
 export default function WhatStep({
@@ -302,33 +318,38 @@ export default function WhatStep({
           <span className="field__label" id="date-chips-label">
             Lunch for
           </span>
-          <div className="chips" role="group" aria-labelledby="date-chips-label">
+          <div className="dates" role="group" aria-labelledby="date-chips-label">
             <button
               type="button"
-              className="chip"
+              className="date date--every"
               aria-pressed={ref.date === undefined}
               onClick={() => setTarget({ day })}
             >
-              Every {dayName}
-              <span className="hint">{summarise(bags.byDay[day] ?? [])}</span>
+              <span className="date__day">Every {dayName}</span>
+              <span className="date__note">{summarise(bags.byDay[day] ?? [])}</span>
             </button>
-            {dayDates.map((date) => {
-              const note = dateNote(date);
-              return (
-                <button
-                  key={date}
-                  type="button"
-                  className="chip"
-                  data-own={hasOwnBag(bags, date) || undefined}
-                  aria-pressed={ref.date === date}
-                  onClick={() => setTarget({ date })}
-                >
-                  {formatDayMonth(date)}
-                  {existing.has(date) && <span className="chip__tag">ordered</span>}
-                  {note && <span className="hint">{note}</span>}
-                </button>
-              );
-            })}
+            <p className="hint">Or give one date a lunch of its own</p>
+            <div className="dates__grid">
+              {dayDates.map((date) => {
+                const note = dateNote(date);
+                const shut = cal?.entries ? !orderable(cal.entries.get(date)) : false;
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    className="date"
+                    data-own={hasOwnBag(bags, date) || undefined}
+                    data-unavailable={shut || undefined}
+                    aria-pressed={ref.date === date}
+                    onClick={() => setTarget({ date })}
+                  >
+                    <span className="date__day">{formatDayMonth(date)}</span>
+                    {existing.has(date) && <span className="date__tag">ordered</span>}
+                    {note && <span className="date__note">{note}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -359,17 +380,18 @@ export default function WhatStep({
         </p>
       )}
 
-      {orderedDates.length > 0 && (
+      {orderedDates.length === 1 && (
         <p className="notice notice--warn" role="status">
-          {student.studentFirstName} already has an order for{' '}
-          {orderedDates.map((date, i) => (
-            <span key={date}>
-              {i > 0 ? (i === orderedDates.length - 1 ? ' and ' : ', ') : ''}
-              {formatShort(date)} ({describeOrders(existing.get(date) ?? [])})
-            </span>
-          ))}
-          . Anything chosen here goes in as an extra order for{' '}
-          {orderedDates.length === 1 ? 'that day' : 'those days'}.
+          {student.studentFirstName} already has an order for {formatShort(orderedDates[0])} (
+          {describeOrders(existing.get(orderedDates[0]) ?? [])}). The date starts unticked at the
+          check; tick it there to order extra.
+        </p>
+      )}
+      {orderedDates.length > 1 && (
+        <p className="notice notice--warn" role="status">
+          {student.studentFirstName} already has an order for {orderedDates.length} of these{' '}
+          {dayName}s: {describeOrdered(orderedDates, existing)}. Those dates start unticked at the
+          check; tick them there to order extra.
         </p>
       )}
 
@@ -379,9 +401,8 @@ export default function WhatStep({
             {ref.date === undefined ? (
               <>
                 Showing the {serviceName} menu for {formatShort(menuDate)}
-                {dayDates.length > 1 ? `, the first ${dayName}` : ''}. Daily specials change from
-                day to day; every date gets checked before anything is ordered.
-                {dayDates.length > 1 ? ' Pick a date above to give it something different.' : ''}
+                {dayDates.length > 1 ? `, the first ${dayName}` : ''}. Specials change from day to
+                day; every date gets checked before anything is ordered.
               </>
             ) : own ? (
               <>
@@ -433,6 +454,7 @@ export default function WhatStep({
               {category.items.map((item) => {
                 const chosen = items.find((s) => s.item.itemKey === item.itemKey);
                 const soldOut = !item.inStock;
+                const [title, detail] = splitName(item.name);
                 return (
                   <button
                     key={item.itemKey}
@@ -443,10 +465,11 @@ export default function WhatStep({
                     onClick={() => setEditing(item)}
                   >
                     <span className="menu-item__name">
-                      {item.name}
+                      <span className="menu-item__title">{title}</span>
                       {chosen && <span className="badge">{chosen.quantity}</span>}
                     </span>
                     <span className="menu-item__price">{formatMoney(item.itemPrice)}</span>
+                    {detail && <span className="menu-item__detail">{detail}</span>}
                     {(soldOut || item.optionSets.length > 0) && (
                       <span className="menu-item__meta">
                         {soldOut
@@ -476,7 +499,7 @@ export default function WhatStep({
         />
       )}
 
-      <div className="actions">
+      <div className="actions actions--sticky">
         <button type="button" className="button button--quiet" onClick={onBack}>
           Back
         </button>

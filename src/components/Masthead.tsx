@@ -17,28 +17,34 @@ export default function Masthead({ session, view, onView, onSignOut }: Props) {
         <span className="brand__name">tuckshop</span>
       </a>
       {session && (
-        <nav className="masthead__nav" aria-label="Sections">
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={view === 'plan'}
-            onClick={() => onView('plan')}
-          >
-            Plan lunches
-          </button>
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={view === 'orders'}
-            onClick={() => onView('orders')}
-          >
-            Upcoming orders
-          </button>
-          <span className="masthead__user">{session.email}</span>
-          <button type="button" className="link-button" onClick={onSignOut}>
-            Sign out
-          </button>
-        </nav>
+        <>
+          <nav className="masthead__nav tabs" aria-label="Sections">
+            <button
+              type="button"
+              className="tab"
+              aria-pressed={view === 'plan'}
+              onClick={() => onView('plan')}
+            >
+              Plan lunches
+            </button>
+            <button
+              type="button"
+              className="tab"
+              aria-pressed={view === 'orders'}
+              onClick={() => onView('orders')}
+            >
+              Upcoming orders
+            </button>
+          </nav>
+          <div className="masthead__account">
+            <span className="masthead__user" title={session.email}>
+              {session.email}
+            </span>
+            <button type="button" className="link-button" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
+        </>
       )}
     </header>
   );

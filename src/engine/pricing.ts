@@ -83,6 +83,15 @@ export function formatMoney(value: number): string {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(value);
 }
 
+/**
+ * A canteen item's name and whatever trails it after " - ", usually its allergens:
+ * "Hot Dog - known allergens: soy" gives ["Hot Dog", "known allergens: soy"].
+ */
+export function splitName(name: string): [string, string | null] {
+  const [title, ...rest] = name.split(' - ');
+  return [title, rest.length > 0 ? rest.join(' - ') : null];
+}
+
 /** Option-set choices a menu item still needs before it can be ordered. */
 export function missingChoices(selection: Selection): string[] {
   return selection.item.optionSets

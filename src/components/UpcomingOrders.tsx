@@ -111,11 +111,11 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
             return (
               <li className="order" key={order.orderKey.value} data-cancelled={cancelled}>
                 <span className="order__date">{formatShort(dateOf(order.dueDate))}</span>
-                <span>
+                <span className="order__details">
                   <strong>{order.studentName}</strong> · {items}
                   <span className="order__items"> · {formatMoney(order.orderTotal)}</span>
                 </span>
-                <span>
+                <span className="order__action">
                   {cancelled ? (
                     <span className="hint">Cancelled</span>
                   ) : (

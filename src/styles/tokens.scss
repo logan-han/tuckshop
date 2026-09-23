@@ -16,6 +16,8 @@
   --go-deep: #085a40;
   --go-tint: #e3f2eb;
   --warn: #9a5b00;
+  /* small warning text, legible on the highlight too */
+  --warn-deep: #7a4800;
   --warn-tint: #fff4dc;
   --bad: #b3261e;
   --bad-tint: #fdeae8;
@@ -26,6 +28,7 @@
     sans-serif;
   --font-marker: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
 
+  --size-0: 0.8125rem;
   --size-1: 0.875rem;
   --size-2: 1rem;
   --size-3: 1.125rem;

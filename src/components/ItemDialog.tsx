@@ -4,6 +4,7 @@ import {
   formatMoney,
   lineTotal,
   missingChoices,
+  splitName,
   type OptionChoice,
   type Selection,
 } from '../engine/pricing';
@@ -59,6 +60,7 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
       .map((q) => ({ questionKey: q.questionKey, answer: answers[q.questionKey] ?? '' })),
   };
   const missing = missingChoices(selection);
+  const [title, detail] = splitName(item.name);
   const description = plainDescription(item.description);
   const maxQuantity =
     item.hasQuantitySellLimit && item.quantityLeft !== null ? Math.max(1, item.quantityLeft) : 20;
@@ -85,8 +87,9 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
     <dialog className="dialog" ref={ref} aria-labelledby="item-title">
       <div className="dialog__body">
         <h2 id="item-title" className="dialog__title">
-          {item.name}
+          {title}
         </h2>
+        {detail && <p className="dialog__detail">{detail}</p>}
         <p className="dialog__price">
           {formatMoney(item.itemPrice)}
           {description && <span className="hint"> · {description}</span>}

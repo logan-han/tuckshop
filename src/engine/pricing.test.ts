@@ -6,6 +6,7 @@ import {
   missingChoices,
   orderAmount,
   round2,
+  splitName,
   unitPrice,
   type Selection,
 } from './pricing';
@@ -189,6 +190,18 @@ describe('pricing', () => {
   it('formats dollars for Australia', () => {
     expect(formatMoney(5.23)).toBe('$5.23');
     expect(formatMoney(0)).toBe('$0.00');
+  });
+
+  it('splits an item name from what trails it after a dash', () => {
+    expect(splitName('Hot Dog - known allergens: soy, gluten wheat')).toEqual([
+      'Hot Dog',
+      'known allergens: soy, gluten wheat',
+    ]);
+    expect(splitName('Pie - Beef - known allergens: gluten')).toEqual([
+      'Pie',
+      'Beef - known allergens: gluten',
+    ]);
+    expect(splitName('Build-Your-Own Sandwich')).toEqual(['Build-Your-Own Sandwich', null]);
   });
 
   it('reports option sets that still need a choice', () => {
