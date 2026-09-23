@@ -4,7 +4,7 @@ import App from './App';
 import { clearSession } from './api/auth';
 import type { PlaceOrdersBody } from './api/types';
 import { addDays } from './engine/schedule';
-import { makeFulfilment, makeMenu } from './test/fixtures';
+import { makeFulfilment, makeHistoryOrder, makeMenu } from './test/fixtures';
 
 function jwt(claims: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -266,6 +266,57 @@ describe('App, from the plan to the orders', () => {
     await user.click(screen.getByRole('button', { name: 'See upcoming orders' }));
     expect(await screen.findByRole('heading', { name: 'Upcoming orders' })).toBeVisible();
     expect(screen.getByText('No upcoming lunch orders.')).toBeInTheDocument();
+  });
+
+  it('costs only what the check will order: no closed date, no date already ordered', async () => {
+    // Three Thursdays: 15 Oct is a curriculum day and 22 Oct already has a lunch.
+    window.localStorage.setItem(
+      'tuckshop.plan',
+      JSON.stringify({
+        weekdays: [4],
+        presetId: 'custom',
+        from: '2026-10-08',
+        to: '2026-10-22',
+        excluded: [],
+      }),
+    );
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes('next-order-fulfillment-dates')) {
+        const startDate = new URL(url).searchParams.get('startDate') ?? '';
+        const week = Array.from({ length: 5 }, (_, i) => addDays(startDate, i)).map((date) =>
+          makeFulfilment(date, date === '2026-10-15' ? { closureReason: 'Curriculum day' } : {}),
+        );
+        return Promise.resolve(new Response(JSON.stringify(week)));
+      }
+      if (url.endsWith('/orders/order-history')) {
+        const order = makeHistoryOrder('2026-10-22');
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              hasMoreOrders: false,
+              orderCount: 1,
+              presentOrders: [{ dueDate: order.dueDate, orders: [order] }],
+              pastOrders: [],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(respond(url, init));
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await signInAs(user);
+
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+
+    const bag = screen.getByRole('complementary', { name: 'Your lunch order so far' });
+    await waitFor(() => expect(bag).toHaveTextContent('1 of 3 lunches + $0.33 fee each'));
+    expect(bag).toHaveTextContent('$5.23');
+    await user.click(screen.getByRole('button', { name: 'Check every date' }));
+    expect(await screen.findByRole('button', { name: 'Place 1 order for $5.23' })).toBeEnabled();
   });
 
   it('reads the wallet again after a top-up in Flexischools', async () => {

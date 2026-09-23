@@ -6,11 +6,17 @@ import type {
   StudentService,
 } from '../api/types';
 import {
+  alreadySubmitted,
+  batchKeys,
   buildPlaceOrdersBody,
   checkAvailability,
   describeOrderError,
   existingOrdersByDate,
+  holdBatch,
+  releaseCart,
+  settleBatch,
   summariseOutcomes,
+  type PendingBatch,
   type PlannedOrder,
 } from './orders';
 import { makeItem } from './pricing.test';
@@ -407,5 +413,114 @@ describe('existingOrdersByDate', () => {
     );
     expect([...map.keys()]).toEqual(['2026-10-08', '2026-10-15']);
     expect(map.get('2026-10-08')?.map((o) => o.orderKey.value)).toEqual(['o1']);
+  });
+});
+
+describe('carts that got no answer', () => {
+  const owner = 'student-1|lunch';
+  const planned = (date: string): PlannedOrder => ({
+    date,
+    dueDate: `${date}T12:40:00`,
+    selections: [],
+  });
+  const placed = (date: string, key: string) =>
+    ({ orderKey: { id: 1, value: key }, dueDate: `${date}T12:40:00` }) as HistoryOrder;
+  let minted = 0;
+  const mint = () => `new-${++minted}`;
+  beforeEach(() => {
+    minted = 0;
+  });
+
+  const pending: PendingBatch = {
+    owner,
+    dates: {
+      '2026-10-08': { cartKey: 'cart-a', requestId: 'req-8', had: [] },
+      '2026-10-15': { cartKey: 'cart-a', requestId: 'req-15', had: ['old-15'] },
+    },
+  };
+
+  it('mints fresh keys when nothing is pending', () => {
+    expect(batchKeys([planned('2026-10-08')], null, owner, mint)).toEqual({
+      cartKey: 'new-1',
+      requestIds: ['new-2'],
+    });
+  });
+
+  it('reuses a pending cart’s keys for its dates, sent in any company', () => {
+    const keys = batchKeys([planned('2026-10-22'), planned('2026-10-15')], pending, owner, mint);
+    expect(keys).toEqual({ cartKey: 'cart-a', requestIds: ['new-1', 'req-15'] });
+  });
+
+  it('ignores another student’s or service’s pending cart', () => {
+    const keys = batchKeys([planned('2026-10-08')], pending, 'student-2|lunch', mint);
+    expect(keys.cartKey).toBe('new-1');
+  });
+
+  it('holds a cart that got no answer, keeping the first keys a date went out with', () => {
+    const held = holdBatch(
+      pending,
+      owner,
+      {
+        cartKey: 'cart-b',
+        requestIds: ['req-8-again', 'req-22'],
+        orders: [planned('2026-10-08'), planned('2026-10-22')],
+      },
+      (date) => (date === '2026-10-22' ? [placed(date, 'old-22')] : []),
+    );
+    expect(held.dates['2026-10-08']).toEqual(pending.dates['2026-10-08']);
+    expect(held.dates['2026-10-22']).toEqual({
+      cartKey: 'cart-b',
+      requestId: 'req-22',
+      had: ['old-22'],
+    });
+  });
+
+  it('settles a date once it shows an order it did not have before', () => {
+    const existing = new Map([
+      ['2026-10-08', [placed('2026-10-08', 'new-8')]],
+      // Only the order 15 Oct already had: its own cart may not have gone in.
+      ['2026-10-15', [placed('2026-10-15', 'old-15')]],
+    ]);
+    expect(settleBatch(pending, existing)?.dates).toEqual({
+      '2026-10-15': pending.dates['2026-10-15'],
+    });
+    expect(settleBatch(pending, new Map())).toBe(pending);
+    expect(
+      settleBatch(pending, new Map([...existing, ['2026-10-15', [placed('x', 'new-15')]]])),
+    ).toBeNull();
+  });
+
+  it('lets go of every date of a cart Flexischools answered as new', () => {
+    const mixed: PendingBatch = {
+      owner,
+      dates: { ...pending.dates, '2026-10-22': { cartKey: 'cart-b', requestId: 'r', had: [] } },
+    };
+    expect(Object.keys(releaseCart(mixed, 'cart-a')?.dates ?? {})).toEqual(['2026-10-22']);
+    expect(releaseCart(pending, 'cart-a')).toBeNull();
+    expect(releaseCart(null, 'cart-a')).toBeNull();
+  });
+
+  it('spots a cart turned away as already submitted', () => {
+    const refusal = (errorCode: number) => ({
+      errorCode,
+      errorTitle: null,
+      errorMessage: null,
+      multiOrderErrorMessage: null,
+      renderType: null,
+      params: null,
+    });
+    const response = (
+      cartError: number | null,
+      orderError: number | null,
+    ): PlaceOrdersResponse => ({
+      isSuccessful: false,
+      cartError: cartError === null ? null : refusal(cartError),
+      ordersResponse: [
+        { orderPlaced: false, error: orderError === null ? null : refusal(orderError) },
+      ],
+    });
+    expect(alreadySubmitted(response(119, null))).toBe(true);
+    expect(alreadySubmitted(response(null, 119))).toBe(true);
+    expect(alreadySubmitted(response(105, null))).toBe(false);
   });
 });

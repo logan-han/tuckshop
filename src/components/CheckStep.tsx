@@ -1,15 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
+import { AuthError } from '../api/auth';
 import { describeError, needsSignIn } from '../api/errors';
 import { ApiError, getMenu, getOrderHistory, placeOrders, uuid } from '../api/flexischools';
 import { getFulfillmentDatesFor, mapWithConcurrency } from '../api/lookup';
-import type { HistoryOrder, Student, StudentService, Wallet } from '../api/types';
+import type {
+  HistoryOrder,
+  PlaceOrdersResponse,
+  Student,
+  StudentService,
+  Wallet,
+} from '../api/types';
 import {
+  alreadySubmitted,
+  batchKeys,
+  batchOwner,
   buildPlaceOrdersBody,
   checkAvailability,
   describeOrders,
   existingOrdersByDate,
+  holdBatch,
+  releaseCart,
+  settleBatch,
   summariseOutcomes,
   type OrderOutcome,
+  type PendingBatch,
   type PlannedOrder,
 } from '../engine/orders';
 import { cartTotals, formatMoney, orderAmount, type Selection } from '../engine/pricing';
@@ -42,6 +56,13 @@ interface Props {
   onBack: () => void;
   onPlaced: (outcomes: OrderOutcome[], orders: PlannedOrder[]) => void;
   onError: (error: unknown) => void;
+  /** Dates sent in carts that got no answer; kept above this step so they outlive it. */
+  pending: PendingBatch | null;
+  onPending: (pending: PendingBatch | null) => void;
+  /** Orders may have gone in behind the step's back: read them and the wallet again. */
+  onOrdersChanged: () => void;
+  /** How long to give Flexischools, after a cart got no answer, before looking again. */
+  settleMs?: number;
 }
 
 const STATUS_LABEL: Record<
@@ -72,9 +93,14 @@ function unchecked(dates: string[]): Row[] {
   }));
 }
 
-/** A failure that leaves it open whether Flexischools took the orders: no answer came back. */
+/**
+ * A failure that leaves it open whether Flexischools took the orders: anything but a clear refusal
+ * (a 4xx) or a sign-in problem before anything was sent. A lost connection, a 5xx from a gateway
+ * that gave up waiting, and a reply that could not be read all count.
+ */
 function unanswered(error: unknown): boolean {
-  return error instanceof TypeError || (error instanceof ApiError && error.status >= 500);
+  if (error instanceof ApiError) return error.status >= 500;
+  return !(error instanceof AuthError);
 }
 
 export default function CheckStep({
@@ -88,22 +114,27 @@ export default function CheckStep({
   onBack,
   onPlaced,
   onError,
+  pending,
+  onPending,
+  onOrdersChanged,
+  settleMs = 3000,
 }: Props) {
+  const owner = batchOwner(student, service);
   const [rows, setRows] = useState<Row[]>(() => unchecked(dates));
   const [checking, setChecking] = useState(true);
-  /** Bumped to check every date again. */
-  const [checkRun, setCheckRun] = useState(0);
+  /** Bumped to check every date again; `settle` when a cart has just gone unanswered. */
+  const [checkRun, setCheckRun] = useState({ n: 0, settle: false });
   const [checkError, setCheckError] = useState<{ message: string; retry: boolean } | null>(null);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
-  /** The last batch got no answer, so every date was checked again before anything is resent. */
-  const [unsure, setUnsure] = useState(false);
+  /** Why the last cart's outcome is unknown, while the dates are checked again. */
+  const [unsure, setUnsure] = useState<'no answer' | 'had it' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  /**
-   * The keys the batch last went out with. The same dates sent again reuse them, so when a first
-   * try did go through, Flexischools sees a repeat rather than a second cart to charge for.
-   */
-  const sent = useRef<{ dates: string; cartKey: string; requestIds: string[] } | null>(null);
+  // The check reads these without re-running when they change.
+  const latest = useRef({ pending, onPending, onOrdersChanged });
+  useEffect(() => {
+    latest.current = { pending, onPending, onOrdersChanged };
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +145,10 @@ export default function CheckStep({
 
     (async () => {
       try {
+        // A gateway can give up while Flexischools is still placing the orders; give it a moment.
+        if (checkRun.settle && settleMs)
+          await new Promise((resolve) => setTimeout(resolve, settleMs));
+        if (cancelled) return;
         const [fulfilment, history] = await Promise.all([
           getFulfillmentDatesFor(student.studentKey, service.supplierServiceKey, dates),
           getOrderHistory({ fromDate: dates[0], toDate: dates[dates.length - 1], pageSize: 200 }),
@@ -123,6 +158,12 @@ export default function CheckStep({
           student.studentKey,
           service.supplierServiceKey,
         );
+        if (cancelled) return;
+        // Dates from an unanswered cart that now show a new order went through.
+        const held = latest.current.pending;
+        const settled = settleBatch(held?.owner === owner ? held : null, existing);
+        if (held?.owner === owner && settled !== held) latest.current.onPending(settled);
+        if (checkRun.settle) latest.current.onOrdersChanged();
 
         const toFetch: Array<{ date: string; dueDate: string }> = [];
         for (const date of dates) {
@@ -200,13 +241,13 @@ export default function CheckStep({
     return () => {
       cancelled = true;
     };
-  }, [student, service, dates, bags, onError, checkRun]);
+  }, [student, service, owner, dates, bags, onError, checkRun, settleMs]);
 
-  function checkAgain() {
+  function checkAgain(settle = false) {
     setRows(unchecked(dates));
     setChecking(true);
     setCheckError(null);
-    setCheckRun((n) => n + 1);
+    setCheckRun((run) => ({ n: run.n + 1, settle }));
   }
 
   const included = rows.filter((row) => row.include && row.dueDate);
@@ -221,34 +262,74 @@ export default function CheckStep({
   async function place() {
     setPlacing(true);
     setPlaceError(null);
-    setUnsure(false);
+    setUnsure(null);
     const orders: PlannedOrder[] = included.map((row) => ({
       date: row.date,
       dueDate: row.dueDate as string,
       selections: row.selections,
     }));
-    const batch = orders.map((order) => order.date).join(',');
-    if (sent.current?.dates !== batch) {
-      sent.current = { dates: batch, cartKey: uuid(), requestIds: orders.map(() => uuid()) };
-    }
-    const { cartKey, requestIds } = sent.current;
+    const { cartKey, requestIds } = batchKeys(orders, pending, owner, uuid);
+    const resent = Object.values(pending?.owner === owner ? pending.dates : {}).some(
+      (entry) => entry.cartKey === cartKey,
+    );
+    // On record before it goes, so a cart that never gets an answer is already held.
+    const held = holdBatch(
+      pending,
+      owner,
+      { cartKey, requestIds, orders },
+      (date) => rows.find((row) => row.date === date)?.existing ?? [],
+    );
+    onPending(held);
+    const lookAgain = (why: 'no answer' | 'had it') => {
+      setPlacing(false);
+      setUnsure(why);
+      checkAgain(true);
+    };
+    let response: PlaceOrdersResponse;
     try {
-      const response = await placeOrders(
+      response = await placeOrders(
         buildPlaceOrdersBody({ student, service, orders, feePerOrder, cartKey, requestIds }),
       );
-      onPlaced(summariseOutcomes(orders, requestIds, response), orders);
     } catch (e) {
       onError(e);
-      setPlacing(false);
-      if (unanswered(e)) {
-        // The orders may have gone in with the answer lost on the way back, so look again
-        // before anything is sent twice.
-        setUnsure(true);
-        checkAgain();
+      if (unanswered(e) || (resent && !needsSignIn(e))) {
+        // The orders may have gone in with the answer lost on the way back, or an earlier try
+        // of this cart may have; look again before anything is sent twice.
+        lookAgain('no answer');
       } else {
+        // A clear refusal: nothing went in with this try, and a cart nobody had seen before
+        // has nothing left to guard, so its keys can go.
+        if (!resent) onPending(releaseCart(held, cartKey));
+        setPlacing(false);
         setPlaceError(describeError(e));
       }
+      return;
     }
+    if (alreadySubmitted(response)) {
+      // An earlier try of this cart did reach Flexischools after all.
+      lookAgain('had it');
+      return;
+    }
+    onPending(releaseCart(held, cartKey));
+    onPlaced(summariseOutcomes(orders, requestIds, response), orders);
+  }
+
+  const heldHere = Object.keys(pending?.owner === owner ? pending.dates : {}).filter((date) =>
+    dates.includes(date),
+  );
+  let unsureNote: string | null = null;
+  if (unsure && checking) {
+    unsureNote =
+      unsure === 'had it'
+        ? 'Flexischools already had that cart, so it was not sent twice. Checking what went in…'
+        : 'No answer from Flexischools. Checking whether the orders went through…';
+  } else if (unsure && checkError) {
+    unsureNote = 'The orders may have gone through. Check again before placing them.';
+  } else if (unsure) {
+    unsureNote =
+      heldHere.length === 0
+        ? 'They went through, so they now show as Already ordered.'
+        : 'Flexischools does not show them all yet. Check Upcoming orders before placing again.';
   }
 
   let placeLabel = `Place ${included.length} ${included.length === 1 ? 'order' : 'orders'} for ${formatMoney(totals.total)}`;
@@ -277,7 +358,7 @@ export default function CheckStep({
           {checkError.retry && (
             <>
               {' '}
-              <button type="button" className="link-button" onClick={checkAgain}>
+              <button type="button" className="link-button" onClick={() => checkAgain()}>
                 Try again
               </button>
             </>
@@ -287,7 +368,7 @@ export default function CheckStep({
       {someFailed && (
         <p className="notice notice--warn">
           Some dates could not be checked.{' '}
-          <button type="button" className="link-button" onClick={checkAgain}>
+          <button type="button" className="link-button" onClick={() => checkAgain()}>
             Check again
           </button>
         </p>
@@ -413,10 +494,17 @@ export default function CheckStep({
 
       <div className="actions actions--sticky">
         {/* Up here rather than by the lede, so they show beside the button that was pressed. */}
-        {unsure && (
+        {unsureNote && (
           <p className="notice notice--warn" role="status">
-            No answer from Flexischools, so every date was checked again. Any order that went
-            through now shows as Already ordered.
+            {unsureNote}
+            {checkError?.retry && (
+              <>
+                {' '}
+                <button type="button" className="link-button" onClick={() => checkAgain()}>
+                  Check again
+                </button>
+              </>
+            )}
           </p>
         )}
         {placeError && (

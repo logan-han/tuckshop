@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import {
   ApiError,
   getFulfillmentDates,
@@ -8,6 +9,8 @@ import {
   placeOrders,
 } from '../api/flexischools';
 import type { FulfillmentDate, OrderHistory, PlaceOrdersBody, Wallet } from '../api/types';
+import type { PendingBatch } from '../engine/orders';
+import type { Bags } from '../engine/selections';
 import { addDays } from '../engine/schedule';
 import {
   lunch,
@@ -51,30 +54,77 @@ const emptyHistory: OrderHistory = {
   pastOrders: [],
 };
 
+/** Held outside the harness, as App holds its bags in state, so a re-render keeps the same one. */
+const tendersEveryThursday: Bags = { byDay: { 4: [makeSelection(tenders)] }, byDate: {} };
+
+/** The order history once each planned Thursday has an order. */
+const everyThursdayOrdered: OrderHistory = {
+  ...emptyHistory,
+  presentOrders: THURSDAYS.map((date) => ({
+    dueDate: `${date}T12:40:00`,
+    orders: [makeHistoryOrder(date)],
+  })),
+};
+
 /** What the canteen calendar says about a date; null means it does not list it at all. */
 let calendar: (date: string) => FulfillmentDate | null;
 
+/**
+ * The step as App mounts it: the unanswered carts live above it, so they outlive a remount, which
+ * the "Remount" button stands in for (Back and forward again).
+ */
 function renderStep(overrides: Partial<Parameters<typeof CheckStep>[0]> = {}) {
   const onBack = vi.fn();
   const onPlaced = vi.fn();
   const onError = vi.fn();
+  const onOrdersChanged = vi.fn();
   const onRefreshWallet = vi.fn(() => Promise.resolve());
-  render(
-    <CheckStep
-      student={student}
-      service={lunch}
-      dates={THURSDAYS}
-      bags={{ byDay: { 4: [makeSelection(tenders)] }, byDate: {} }}
-      feePerOrder={0.33}
-      wallet={wallet}
-      onRefreshWallet={onRefreshWallet}
-      onBack={onBack}
-      onPlaced={onPlaced}
-      onError={onError}
-      {...overrides}
-    />,
+  function Harness() {
+    const [pending, setPending] = useState<PendingBatch | null>(null);
+    const [mount, setMount] = useState(0);
+    return (
+      <>
+        <button type="button" onClick={() => setMount((n) => n + 1)}>
+          Remount
+        </button>
+        <CheckStep
+          key={mount}
+          student={student}
+          service={lunch}
+          dates={THURSDAYS}
+          bags={tendersEveryThursday}
+          feePerOrder={0.33}
+          wallet={wallet}
+          onRefreshWallet={onRefreshWallet}
+          onBack={onBack}
+          onPlaced={onPlaced}
+          onError={onError}
+          pending={pending}
+          onPending={setPending}
+          onOrdersChanged={onOrdersChanged}
+          settleMs={0}
+          {...overrides}
+        />
+      </>
+    );
+  }
+  render(<Harness />);
+  return { onBack, onPlaced, onError, onRefreshWallet, onOrdersChanged };
+}
+
+/** The bodies of every cart sent so far. */
+function carts() {
+  return place.mock.calls.map(([body]) => body);
+}
+
+/** The request id each date went out with in a cart. */
+function idsByDate(body: PlaceOrdersBody) {
+  return Object.fromEntries(
+    body.placeOrderRequests.map((request) => [
+      request.dueDate.slice(0, 10),
+      request.orderRequestId,
+    ]),
   );
-  return { onBack, onPlaced, onError, onRefreshWallet };
 }
 
 function row(date: string) {
@@ -299,31 +349,69 @@ describe('CheckStep', () => {
     expect(screen.queryByText('Could not check')).not.toBeInTheDocument();
   });
 
-  it('checks again rather than resending when a batch gets no answer', async () => {
+  it('looks again rather than resending when a cart gets no answer', async () => {
     const user = userEvent.setup();
-    // The first try went through, but the answer was lost on the way back.
+    // Maybe it went through and the answer was lost on the way back; maybe not.
     place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-    const { onPlaced } = renderStep();
+    const { onPlaced, onOrdersChanged } = renderStep();
 
     await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'No answer from Flexischools, so every date was checked again.',
-    );
+    // Nothing new in the order history, so the parent is sent to look before placing again.
+    expect(
+      await screen.findByText(
+        'Flexischools does not show them all yet. Check Upcoming orders before placing again.',
+      ),
+    ).toBeInTheDocument();
     expect(history).toHaveBeenCalledTimes(2);
+    expect(onOrdersChanged).toHaveBeenCalledTimes(1);
     expect(onPlaced).not.toHaveBeenCalled();
 
-    // Sent again, the same dates go with the same keys, so Flexischools can spot the repeat.
-    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    // Sent again, it goes with the same keys, so Flexischools can spot a repeat.
+    await user.click(screen.getByRole('button', { name: 'Place 3 orders for $15.69' }));
     await waitFor(() => expect(onPlaced).toHaveBeenCalled());
-    const [first, second] = place.mock.calls.map(([body]) => body);
+    const [first, second] = carts();
     expect(second.cartKey).toBe(first.cartKey);
-    expect(second.placeOrderRequests.map((r) => r.orderRequestId)).toEqual(
-      first.placeOrderRequests.map((r) => r.orderRequestId),
-    );
+    expect(idsByDate(second)).toEqual(idsByDate(first));
   });
 
-  it('shows orders that did go through as already ordered after a batch got no answer', async () => {
+  it('keeps an unanswered cart’s keys for its dates, however they are ticked next time', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    await screen.findByText(/does not show them all yet/);
+    await user.click(screen.getByRole('checkbox', { name: 'Order for Thu 22 Oct' }));
+    await user.click(screen.getByRole('button', { name: 'Place 2 orders for $10.46' }));
+
+    await waitFor(() => expect(place).toHaveBeenCalledTimes(2));
+    const [first, second] = carts();
+    expect(second.cartKey).toBe(first.cartKey);
+    const firstIds = idsByDate(first);
+    expect(idsByDate(second)).toEqual({
+      [THURSDAYS[0]]: firstIds[THURSDAYS[0]],
+      [THURSDAYS[1]]: firstIds[THURSDAYS[1]],
+    });
+  });
+
+  it('keeps those keys past Back and forward again', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    await screen.findByText(/does not show them all yet/);
+    await user.click(screen.getByRole('button', { name: 'Remount' }));
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    await waitFor(() => expect(place).toHaveBeenCalledTimes(2));
+    const [first, second] = carts();
+    expect(second.cartKey).toBe(first.cartKey);
+    expect(idsByDate(second)).toEqual(idsByDate(first));
+  });
+
+  it('shows what went through after a cart got no answer, and guards the rest', async () => {
     const user = userEvent.setup();
     place.mockRejectedValueOnce(new ApiError(504, '', '/api/v2.0/orders'));
     // Nothing placed at the first look; by the second, Flexischools has the first two.
@@ -341,6 +429,89 @@ describe('CheckStep', () => {
     expect(await screen.findByRole('button', { name: 'Place 1 order for $5.23' })).toBeEnabled();
     expect(screen.getAllByText('Already ordered')).toHaveLength(2);
     expect(screen.getByRole('checkbox', { name: 'Order for Thu 8 Oct' })).not.toBeChecked();
+    expect(screen.getByRole('status')).toHaveTextContent('does not show them all yet');
+
+    // 22 Oct is still unaccounted for, so it goes again in the same cart.
+    await user.click(screen.getByRole('button', { name: 'Place 1 order for $5.23' }));
+    await waitFor(() => expect(place).toHaveBeenCalledTimes(2));
+    const [first, second] = carts();
+    expect(second.cartKey).toBe(first.cartKey);
+    expect(idsByDate(second)).toEqual({ [THURSDAYS[2]]: idsByDate(first)[THURSDAYS[2]] });
+  });
+
+  it('says so when a cart that got no answer went through after all', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    history.mockResolvedValueOnce(emptyHistory).mockResolvedValue(everyThursdayOrdered);
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    expect(
+      await screen.findByText('They went through, so they now show as Already ordered.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nothing to order' })).toBeDisabled();
+  });
+
+  it('looks again, rather than reporting a failure, when Flexischools already had the cart', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({
+      isSuccessful: false,
+      cartError: {
+        errorCode: 119,
+        errorTitle: null,
+        errorMessage: null,
+        multiOrderErrorMessage: null,
+        renderType: null,
+        params: null,
+      },
+      ordersResponse: [],
+    });
+    // The first try did go in, but the order history only shows it at the third look.
+    history
+      .mockResolvedValueOnce(emptyHistory)
+      .mockResolvedValueOnce(emptyHistory)
+      .mockResolvedValue(everyThursdayOrdered);
+    const { onPlaced } = renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    await screen.findByText(/does not show them all yet/);
+    await user.click(screen.getByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    expect(
+      await screen.findByText('They went through, so they now show as Already ordered.'),
+    ).toBeInTheDocument();
+    expect(onPlaced).not.toHaveBeenCalled();
+    expect(place).toHaveBeenCalledTimes(2);
+  });
+
+  it('says the orders may have gone through when the second look fails too', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    history
+      .mockResolvedValueOnce(emptyHistory)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(emptyHistory);
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    const note = await screen.findByText(
+      'The orders may have gone through. Check again before placing them.',
+    );
+    expect(screen.getByRole('button', { name: 'Could not check dates' })).toBeDisabled();
+    await user.click(within(note).getByRole('button', { name: 'Check again' }));
+    expect(await screen.findByText(/does not show them all yet/)).toBeInTheDocument();
+  });
+
+  it('treats a reply it could not read as no answer', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new SyntaxError('Unexpected token < in JSON'));
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    expect(await screen.findByText(/does not show them all yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/Unexpected token/)).not.toBeInTheDocument();
   });
 
   it('ticks a date when the date itself is tapped', async () => {
@@ -364,6 +535,12 @@ describe('CheckStep', () => {
     expect(onPlaced).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Place 3 orders for $15.69' })).toBeEnabled();
+
+    // A clear refusal means nothing went in, so a second try is a fresh cart.
+    await user.click(screen.getByRole('button', { name: 'Place 3 orders for $15.69' }));
+    await waitFor(() => expect(place).toHaveBeenCalledTimes(2));
+    const [first, second] = carts();
+    expect(second.cartKey).not.toBe(first.cartKey);
   });
 
   it('goes back to the food', async () => {

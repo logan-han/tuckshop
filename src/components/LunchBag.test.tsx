@@ -99,13 +99,24 @@ describe('LunchBag', () => {
     expect(screen.getByText('Thursdays')).toHaveTextContent('× 1');
     // 15 Oct keeps its own lunch on show, but it is not in the sum.
     expect(screen.getByText('Thu 15 Oct')).toHaveTextContent('not in total');
-    expect(screen.getByText('1 lunch + $0.33 fee each')).toBeInTheDocument();
+    expect(screen.getByText('1 of 3 lunches + $0.33 fee each')).toBeInTheDocument();
     expect(screen.getByText('$10.13')).toBeInTheDocument();
   });
 
-  it('leaves the total off when the check has its own', () => {
-    renderBag({ byDay: { 4: [twoTenders] }, byDate: {} }, { showTotal: false });
+  it('still says what it counts when every date is already ordered or closed', () => {
+    renderBag({ byDay: { 4: [twoTenders] }, byDate: {} }, { toOrder: [] });
+    expect(screen.getByText('0 of 3 lunches + $0.33 fee each')).toBeInTheDocument();
+    expect(screen.getByText('$0.00')).toBeInTheDocument();
+  });
+
+  it('only lists the food at the check, whose own table counts and costs it', () => {
+    renderBag(
+      { byDay: { 4: [twoTenders] }, byDate: { [THURSDAYS[1]]: [multigrain] } },
+      { toOrder: [THURSDAYS[0]], costing: false },
+    );
     expect(screen.getByText('Each lunch')).toBeInTheDocument();
+    expect(screen.getByText('Thursdays')).not.toHaveTextContent('×');
+    expect(screen.getByText('Thu 15 Oct')).not.toHaveTextContent('not in total');
     expect(screen.queryByText(/fee each/)).not.toBeInTheDocument();
   });
 

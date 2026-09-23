@@ -220,3 +220,90 @@ export function existingOrdersByDate(
   }
   return map;
 }
+
+/**
+ * Dates sent in a cart that got no answer, so they may or may not have been placed. Sending one
+ * again reuses its keys, so if the first try did go through Flexischools sees a repeat (error 119,
+ * "already submitted") rather than a second cart to charge for.
+ */
+export interface PendingBatch {
+  /** Whose dates these are: studentKey|supplierServiceKey. */
+  owner: string;
+  /** Per date: the cart and request id it went out with, and the orders the date had then. */
+  dates: Record<string, { cartKey: string; requestId: string; had: string[] }>;
+}
+
+/** Whose pending dates a cart's are: one child's orders from one service. */
+export function batchOwner(student: Student, service: StudentService): string {
+  return `${student.studentKey}|${service.supplierServiceKey}`;
+}
+
+/** Keys for a cart: an unanswered cart's for any of its dates, fresh ones otherwise. */
+export function batchKeys(
+  orders: PlannedOrder[],
+  pending: PendingBatch | null,
+  owner: string,
+  mint: () => string,
+): { cartKey: string; requestIds: string[] } {
+  const held = pending?.owner === owner ? pending.dates : {};
+  const earlier = orders.map((order) => held[order.date]).find(Boolean);
+  return {
+    cartKey: earlier?.cartKey ?? mint(),
+    requestIds: orders.map((order) => held[order.date]?.requestId ?? mint()),
+  };
+}
+
+/** Records a cart that got no answer, noting the orders each of its dates already had. */
+export function holdBatch(
+  pending: PendingBatch | null,
+  owner: string,
+  sent: { cartKey: string; requestIds: string[]; orders: PlannedOrder[] },
+  had: (date: string) => HistoryOrder[],
+): PendingBatch {
+  const dates = { ...(pending?.owner === owner ? pending.dates : {}) };
+  sent.orders.forEach((order, index) => {
+    dates[order.date] ??= {
+      cartKey: sent.cartKey,
+      requestId: sent.requestIds[index],
+      had: had(order.date).map((o) => o.orderKey.value),
+    };
+  });
+  return { owner, dates };
+}
+
+/** Pending dates, less those `gone` says are settled; null once none are left. */
+function keepDates(
+  pending: PendingBatch | null,
+  gone: (date: string, entry: PendingBatch['dates'][string]) => boolean,
+): PendingBatch | null {
+  if (!pending) return null;
+  const left = Object.entries(pending.dates).filter(([date, entry]) => !gone(date, entry));
+  if (left.length === Object.keys(pending.dates).length) return pending;
+  return left.length ? { ...pending, dates: Object.fromEntries(left) } : null;
+}
+
+/** Drops the pending dates that order history now shows a new order for: those went through. */
+export function settleBatch(
+  pending: PendingBatch | null,
+  existing: ExistingOrders,
+): PendingBatch | null {
+  return keepDates(pending, (date, { had }) =>
+    (existing.get(date) ?? []).some((o) => !had.includes(o.orderKey.value)),
+  );
+}
+
+/**
+ * Flexischools answered a cart it had not seen, so its earlier unanswered try never arrived and
+ * none of that cart's dates were placed by it.
+ */
+export function releaseCart(pending: PendingBatch | null, cartKey: string): PendingBatch | null {
+  return keepDates(pending, (_, entry) => entry.cartKey === cartKey);
+}
+
+/** Flexischools turned the cart away as one it has had before (error 119). */
+export function alreadySubmitted(response: PlaceOrdersResponse): boolean {
+  return (
+    response.cartError?.errorCode === 119 ||
+    (response.ordersResponse ?? []).some((result) => result.error?.errorCode === 119)
+  );
+}

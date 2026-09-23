@@ -18,7 +18,13 @@ import UpcomingOrders from './components/UpcomingOrders';
 import WhatStep from './components/WhatStep';
 import WhenStep from './components/WhenStep';
 import WhoStep from './components/WhoStep';
-import { existingOrdersByDate, type ExistingOrders, type OrderOutcome } from './engine/orders';
+import {
+  batchOwner,
+  existingOrdersByDate,
+  type ExistingOrders,
+  type OrderOutcome,
+  type PendingBatch,
+} from './engine/orders';
 import { bagFor, EMPTY_BAGS, setBag, type Bags } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
 import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from './state/plan';
@@ -43,6 +49,12 @@ export default function App() {
   const [existing, setExisting] = useState<ExistingOrders>(NO_ORDERS);
   /** Planned dates the canteen calendar says cannot be ordered for, as step 3 last read it. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(NO_DATES);
+  /**
+   * Dates sent in carts that got no answer, per child and service. Kept here, past Back, a
+   * switch to another child and a session that lapses mid order, so resending them reuses their
+   * keys and cannot place them twice.
+   */
+  const [pending, setPending] = useState<Record<string, PendingBatch>>({});
   const [ordersEpoch, setOrdersEpoch] = useState(0);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
@@ -293,6 +305,16 @@ export default function App() {
                   refreshAccount();
                 }}
                 onError={handleError}
+                pending={pending[batchOwner(student, service)] ?? null}
+                onPending={(next) =>
+                  setPending((current) => {
+                    const held = { ...current };
+                    if (next) held[next.owner] = next;
+                    else delete held[batchOwner(student, service)];
+                    return held;
+                  })
+                }
+                onOrdersChanged={refreshAccount}
               />
             )}
             {step === 'check' && fee === null && <p className="hint">Loading order fees…</p>}
@@ -320,7 +342,7 @@ export default function App() {
                 bags={bags}
                 feePerOrder={fee}
                 toOrder={toOrder}
-                showTotal={step !== 'check'}
+                costing={step !== 'check'}
                 onRemove={
                   step === 'what'
                     ? (ref, index) =>

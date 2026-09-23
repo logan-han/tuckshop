@@ -15,8 +15,8 @@ interface Props {
    * counted and costed, so the total matches the one at the check. Every date when left out.
    */
   toOrder?: string[];
-  /** Left off at the check, whose own total is the one that counts. */
-  showTotal?: boolean;
+  /** Whether to count and cost the lunches: off at the check, whose own table does both. */
+  costing?: boolean;
   onRemove?: (ref: BagRef, index: number) => void;
 }
 
@@ -82,12 +82,14 @@ export default function LunchBag({
   bags,
   feePerOrder,
   toOrder = dates,
-  showTotal = true,
+  costing = true,
   onRemove,
 }: Props) {
   const days = weekdays.filter((day) => dates.some((date) => weekdayOf(date) === day));
   const own = ownBagDates(bags, dates);
   const totals = planTotals(bags, toOrder, feePerOrder ?? 0);
+  // Every planned date with food, to say how many of them the total covers.
+  const planned = planTotals(bags, dates, 0).lunches;
   const anything = own.length > 0 || days.some((day) => (bags.byDay[day]?.length ?? 0) > 0);
   const headed = days.length > 1 || own.length > 0;
 
@@ -114,7 +116,7 @@ export default function LunchBag({
               <div key={day}>
                 {headed && (
                   <p className="bag__day">
-                    {name}s <span>× {count}</span>
+                    {name}s {costing && <span>× {count}</span>}
                   </p>
                 )}
                 {items.length === 0 ? (
@@ -132,7 +134,8 @@ export default function LunchBag({
           {own.map((date) => (
             <div key={date}>
               <p className="bag__day">
-                {formatShort(date)} {!toOrder.includes(date) && <span>not in total</span>}
+                {formatShort(date)}{' '}
+                {costing && !toOrder.includes(date) && <span>not in total</span>}
               </p>
               <Lines
                 items={bags.byDate[date]}
@@ -141,10 +144,11 @@ export default function LunchBag({
               />
             </div>
           ))}
-          {showTotal && totals.lunches > 0 && (
+          {costing && planned > 0 && (
             <p className="bag__total">
               <span>
-                {totals.lunches} {totals.lunches === 1 ? 'lunch' : 'lunches'}
+                {totals.lunches < planned ? `${totals.lunches} of ${planned}` : planned}{' '}
+                {planned === 1 ? 'lunch' : 'lunches'}
                 {feePerOrder !== null ? ` + ${formatMoney(feePerOrder)} fee each` : ''}
               </span>
               <span>{formatMoney(totals.total)}</span>
