@@ -252,9 +252,17 @@ describe('App, from the plan to the orders', () => {
 
     await user.click(screen.getByRole('button', { name: 'Check every date' }));
     const place = await screen.findByRole('button', { name: 'Place 2 orders for $10.46' });
+    // The check's own total is the one that counts, so the bag leaves its out.
+    expect(
+      screen.getByRole('complementary', { name: 'Your lunch order so far' }),
+    ).not.toHaveTextContent('fee each');
     await user.click(place);
 
     expect(await screen.findByRole('heading', { name: '2 lunches ordered for Sam' })).toBeVisible();
+    // What was placed is listed; the plan's bag would only disagree with it.
+    expect(
+      screen.queryByRole('complementary', { name: 'Your lunch order so far' }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'See upcoming orders' }));
     expect(await screen.findByRole('heading', { name: 'Upcoming orders' })).toBeVisible();
     expect(screen.getByText('No upcoming lunch orders.')).toBeInTheDocument();

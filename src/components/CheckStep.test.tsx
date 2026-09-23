@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ApiError,
@@ -178,7 +178,7 @@ describe('CheckStep', () => {
     for (const date of ['Thu 8 Oct', 'Thu 15 Oct', 'Thu 22 Oct']) {
       expect(screen.getByRole('checkbox', { name: `Order for ${date}` })).toBeDisabled();
     }
-    expect(screen.getByRole('button', { name: 'Place 0 orders for $0.00' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nothing to order' })).toBeDisabled();
     // Nothing was worth a menu lookup.
     expect(menu).not.toHaveBeenCalled();
   });
@@ -235,7 +235,8 @@ describe('CheckStep', () => {
     renderStep({ wallet: { ...wallet, availableBalance: 5 } });
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The wallet is $10.69 short.');
-    expect(screen.getByRole('button', { name: /^Place 3 orders/ })).toBeDisabled();
+    // The pinned button says why it cannot be pressed.
+    expect(screen.getByRole('button', { name: 'Wallet $10.69 short' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Flexischools' })).toHaveAttribute(
       'href',
       'https://user.flexischools.com.au/login?returnUrl=/wallet-topup',
@@ -265,11 +266,91 @@ describe('CheckStep', () => {
     history.mockRejectedValue(new ApiError(401, '', '/api/v1.0/orders/order-history'));
     const { onError } = renderStep();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Your Flexischools session has expired.',
-    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Your Flexischools session has expired.');
+    // Signing in again is the fix, so there is nothing here to try again.
+    expect(within(alert).queryByRole('button')).not.toBeInTheDocument();
     expect(onError).toHaveBeenCalled();
-    expect(screen.getAllByText('Checking')).toHaveLength(3);
+    expect(screen.getAllByText('Could not check')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Could not check dates' })).toBeDisabled();
+  });
+
+  it('checks every date again when a check that failed is tried again', async () => {
+    const user = userEvent.setup();
+    history.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    renderStep();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not reach Flexischools.');
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(history).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers to check again when a single date could not be checked', async () => {
+    const user = userEvent.setup();
+    menu.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Check again' }));
+    expect(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' })).toBeEnabled();
+    expect(screen.queryByText('Could not check')).not.toBeInTheDocument();
+  });
+
+  it('checks again rather than resending when a batch gets no answer', async () => {
+    const user = userEvent.setup();
+    // The first try went through, but the answer was lost on the way back.
+    place.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const { onPlaced } = renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'No answer from Flexischools, so every date was checked again.',
+    );
+    expect(history).toHaveBeenCalledTimes(2);
+    expect(onPlaced).not.toHaveBeenCalled();
+
+    // Sent again, the same dates go with the same keys, so Flexischools can spot the repeat.
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+    await waitFor(() => expect(onPlaced).toHaveBeenCalled());
+    const [first, second] = place.mock.calls.map(([body]) => body);
+    expect(second.cartKey).toBe(first.cartKey);
+    expect(second.placeOrderRequests.map((r) => r.orderRequestId)).toEqual(
+      first.placeOrderRequests.map((r) => r.orderRequestId),
+    );
+  });
+
+  it('shows orders that did go through as already ordered after a batch got no answer', async () => {
+    const user = userEvent.setup();
+    place.mockRejectedValueOnce(new ApiError(504, '', '/api/v2.0/orders'));
+    // Nothing placed at the first look; by the second, Flexischools has the first two.
+    history.mockResolvedValueOnce(emptyHistory).mockResolvedValue({
+      ...emptyHistory,
+      presentOrders: THURSDAYS.slice(0, 2).map((date) => ({
+        dueDate: `${date}T12:40:00`,
+        orders: [makeHistoryOrder(date)],
+      })),
+    });
+    renderStep();
+
+    await user.click(await screen.findByRole('button', { name: 'Place 3 orders for $15.69' }));
+
+    expect(await screen.findByRole('button', { name: 'Place 1 order for $5.23' })).toBeEnabled();
+    expect(screen.getAllByText('Already ordered')).toHaveLength(2);
+    expect(screen.getByRole('checkbox', { name: 'Order for Thu 8 Oct' })).not.toBeChecked();
+  });
+
+  it('ticks a date when the date itself is tapped', async () => {
+    const user = userEvent.setup();
+    renderStep();
+
+    await screen.findByRole('button', { name: 'Place 3 orders for $15.69' });
+    await user.click(screen.getByText('Thu 15 Oct'));
+    expect(screen.getByRole('checkbox', { name: 'Order for Thu 15 Oct' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Place 2 orders for $10.46' })).toBeEnabled();
   });
 
   it('reports a refused batch and lets it be tried again', async () => {

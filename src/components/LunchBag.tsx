@@ -10,6 +10,13 @@ interface Props {
   dates: string[];
   bags: Bags;
   feePerOrder: number | null;
+  /**
+   * The dates the check will start ticked: not already ordered, not closed. Only these are
+   * counted and costed, so the total matches the one at the check. Every date when left out.
+   */
+  toOrder?: string[];
+  /** Left off at the check, whose own total is the one that counts. */
+  showTotal?: boolean;
   onRemove?: (ref: BagRef, index: number) => void;
 }
 
@@ -74,11 +81,13 @@ export default function LunchBag({
   dates,
   bags,
   feePerOrder,
+  toOrder = dates,
+  showTotal = true,
   onRemove,
 }: Props) {
   const days = weekdays.filter((day) => dates.some((date) => weekdayOf(date) === day));
   const own = ownBagDates(bags, dates);
-  const totals = planTotals(bags, dates, feePerOrder ?? 0);
+  const totals = planTotals(bags, toOrder, feePerOrder ?? 0);
   const anything = own.length > 0 || days.some((day) => (bags.byDay[day]?.length ?? 0) > 0);
   const headed = days.length > 1 || own.length > 0;
 
@@ -96,11 +105,11 @@ export default function LunchBag({
           {days.map((day) => {
             const items = bags.byDay[day] ?? [];
             // Dates with a lunch of their own are listed separately below.
-            const count = dates.filter(
-              (date) => weekdayOf(date) === day && !hasOwnBag(bags, date),
-            ).length;
+            const ofDay = (list: string[]) =>
+              list.filter((date) => weekdayOf(date) === day && !hasOwnBag(bags, date)).length;
+            const count = ofDay(toOrder);
             const name = WEEKDAYS.find((w) => w.value === day)?.long ?? '';
-            if (count === 0) return null;
+            if (ofDay(dates) === 0) return null;
             return (
               <div key={day}>
                 {headed && (
@@ -122,7 +131,9 @@ export default function LunchBag({
           })}
           {own.map((date) => (
             <div key={date}>
-              <p className="bag__day">{formatShort(date)}</p>
+              <p className="bag__day">
+                {formatShort(date)} {!toOrder.includes(date) && <span>not in total</span>}
+              </p>
               <Lines
                 items={bags.byDate[date]}
                 label="This lunch"
@@ -130,7 +141,7 @@ export default function LunchBag({
               />
             </div>
           ))}
-          {totals.lunches > 0 && (
+          {showTotal && totals.lunches > 0 && (
             <p className="bag__total">
               <span>
                 {totals.lunches} {totals.lunches === 1 ? 'lunch' : 'lunches'}

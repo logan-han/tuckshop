@@ -30,6 +30,8 @@ interface Props {
   onChange: (bags: Bags) => void;
   /** Takes a date out of the plan altogether. */
   onSkipDate: (date: string) => void;
+  /** Told which planned dates the canteen calendar says cannot be ordered for, once it is read. */
+  onClosed?: (dates: string[]) => void;
   onBack: () => void;
   onContinue: () => void;
   onError: (error: unknown) => void;
@@ -94,6 +96,7 @@ export default function WhatStep({
   existing,
   onChange,
   onSkipDate,
+  onClosed,
   onBack,
   onContinue,
   onError,
@@ -115,6 +118,8 @@ export default function WhatStep({
 
   const key = `${student.studentKey}|${service.supplierServiceKey}|${dates.join(',')}`;
   const [calendar, setCalendar] = useState<Calendar | null>(null);
+  /** Bumped by "Try again" to read the calendar afresh. */
+  const [calendarTry, setCalendarTry] = useState(0);
   const [menus, setMenus] = useState<Menus>({ key, byDate: {} });
   const inFlight = useRef(new Set<string>());
   const [query, setQuery] = useState('');
@@ -129,7 +134,9 @@ export default function WhatStep({
           service.supplierServiceKey,
           dates,
         );
-        if (!cancelled) setCalendar({ key, entries, error: null });
+        if (cancelled) return;
+        setCalendar({ key, entries, error: null });
+        onClosed?.(dates.filter((date) => !orderable(entries.get(date))));
       } catch (e) {
         if (cancelled) return;
         onError(e);
@@ -139,7 +146,7 @@ export default function WhatStep({
     return () => {
       cancelled = true;
     };
-  }, [key, student, service, dates, onError]);
+  }, [key, student, service, dates, onClosed, onError, calendarTry]);
 
   const cal = calendar && calendar.key === key ? calendar : null;
 
@@ -368,7 +375,17 @@ export default function WhatStep({
 
       {cal?.error && (
         <p className="notice notice--bad" role="alert">
-          {cal.error}
+          {cal.error}{' '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setCalendar(null);
+              setCalendarTry((n) => n + 1);
+            }}
+          >
+            Try again
+          </button>
         </p>
       )}
       {!cal && <p className="hint">Checking the canteen calendar…</p>}
@@ -386,9 +403,23 @@ export default function WhatStep({
         </p>
       )}
       {menuDate && !loaded && <p className="hint">Loading the menu…</p>}
-      {loaded?.error && (
+      {loaded?.error && menuDate && (
         <p className="notice notice--bad" role="alert">
-          {loaded.error}
+          {loaded.error}{' '}
+          <button
+            type="button"
+            className="link-button"
+            // Forgetting the failed load is enough: the menu effect fetches whatever is missing.
+            onClick={() =>
+              setMenus((current) => {
+                const byDate = { ...current.byDate };
+                delete byDate[menuDate];
+                return { ...current, byDate };
+              })
+            }
+          >
+            Try again
+          </button>
         </p>
       )}
 

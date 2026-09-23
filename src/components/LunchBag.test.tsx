@@ -89,6 +89,26 @@ describe('LunchBag', () => {
     expect(screen.getByText('$24.79')).toBeInTheDocument();
   });
 
+  it('counts and costs only the dates the check will start ticked', () => {
+    renderBag(
+      { byDay: { 4: [twoTenders] }, byDate: { [THURSDAYS[1]]: [multigrain] } },
+      { toOrder: [THURSDAYS[0]] },
+    );
+
+    // Of the two Thursdays on the weekday's lunch, only 8 Oct will be ordered.
+    expect(screen.getByText('Thursdays')).toHaveTextContent('× 1');
+    // 15 Oct keeps its own lunch on show, but it is not in the sum.
+    expect(screen.getByText('Thu 15 Oct')).toHaveTextContent('not in total');
+    expect(screen.getByText('1 lunch + $0.33 fee each')).toBeInTheDocument();
+    expect(screen.getByText('$10.13')).toBeInTheDocument();
+  });
+
+  it('leaves the total off when the check has its own', () => {
+    renderBag({ byDay: { 4: [twoTenders] }, byDate: {} }, { showTotal: false });
+    expect(screen.getByText('Each lunch')).toBeInTheDocument();
+    expect(screen.queryByText(/fee each/)).not.toBeInTheDocument();
+  });
+
   it('says which weekdays are still empty and leaves weekdays with no dates out', () => {
     renderBag(
       { byDay: { 4: [twoTenders], 5: [] }, byDate: {} },

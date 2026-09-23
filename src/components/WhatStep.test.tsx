@@ -278,6 +278,43 @@ describe('WhatStep', () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it('reads the calendar again when asked', async () => {
+    const user = userEvent.setup();
+    fulfilments.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const onClosed = vi.fn();
+    renderStep({ onClosed });
+
+    const alert = await screen.findByRole('alert');
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Hot Food' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(onClosed).toHaveBeenLastCalledWith([]);
+  });
+
+  it('reads a menu again when asked', async () => {
+    const user = userEvent.setup();
+    menu.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    renderStep();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not reach Flexischools.');
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Hot Food' })).toBeInTheDocument();
+    expect(menu).toHaveBeenCalledTimes(2);
+  });
+
+  it('says which dates the calendar will not take an order for', async () => {
+    calendar = (date) =>
+      date === THURSDAYS[1]
+        ? makeFulfilment(date, { closureReason: 'Curriculum day' })
+        : makeFulfilment(date);
+    const onClosed = vi.fn();
+    renderStep({ onClosed });
+
+    await screen.findByRole('heading', { name: 'Hot Food' });
+    expect(onClosed).toHaveBeenCalledWith([THURSDAYS[1]]);
+  });
+
   it('reports a menu it could not read', async () => {
     menu.mockRejectedValue(new TypeError('Failed to fetch'));
     const { onError } = renderStep();

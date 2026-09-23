@@ -26,6 +26,7 @@ import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
 
 const NO_ORDERS: ExistingOrders = new Map();
+const NO_DATES: ReadonlySet<string> = new Set();
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -40,6 +41,8 @@ export default function App() {
   const [bags, setBags] = useState<Bags>(EMPTY_BAGS);
   /** Live orders already placed for the planned range, by date. */
   const [existing, setExisting] = useState<ExistingOrders>(NO_ORDERS);
+  /** Planned dates the canteen calendar says cannot be ordered for, as step 3 last read it. */
+  const [closed, setClosed] = useState<ReadonlySet<string>>(NO_DATES);
   const [ordersEpoch, setOrdersEpoch] = useState(0);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
@@ -55,10 +58,13 @@ export default function App() {
     setFee(null);
     setBags(EMPTY_BAGS);
     setExisting(NO_ORDERS);
+    setClosed(NO_DATES);
     setStep('who');
     setView('plan');
     setBanner(message);
   }, []);
+
+  const noteClosed = useCallback((dates: string[]) => setClosed(new Set(dates)), []);
 
   /** Shared failure path: anything that means "sign in again" signs out, the rest is left to the caller. */
   const handleError = useCallback(
@@ -85,6 +91,7 @@ export default function App() {
     setService(svc);
     setBags(EMPTY_BAGS);
     setExisting(NO_ORDERS);
+    setClosed(NO_DATES);
     setPlan((current) => {
       const next = retargetPlan(current, todayIso(), s.schoolName);
       if (next !== current) savePlan(next);
@@ -162,6 +169,11 @@ export default function App() {
 
   const today = todayIso();
   const dates = useMemo(() => planDates(plan, today), [plan, today]);
+  // What the check will start ticked, so the bag's total is the one the check arrives at.
+  const toOrder = useMemo(
+    () => dates.filter((date) => !existing.has(date) && !closed.has(date)),
+    [dates, existing, closed],
+  );
 
   // What is already ordered for the planned range, so the earlier steps can point it out. The
   // check step fetches again right before placing anything.
@@ -258,6 +270,7 @@ export default function App() {
                 existing={existing}
                 onChange={setBags}
                 onSkipDate={(date) => updatePlan(skipDate(plan, date))}
+                onClosed={noteClosed}
                 onBack={() => setStep('when')}
                 onContinue={() => setStep('check')}
                 onError={handleError}
@@ -296,28 +309,33 @@ export default function App() {
               />
             )}
           </div>
-          <div className="layout__aside">
-            <LunchBag
-              student={student}
-              service={service}
-              weekdays={plan.weekdays}
-              dates={dates}
-              bags={bags}
-              feePerOrder={fee}
-              onRemove={
-                step === 'what'
-                  ? (ref, index) =>
-                      setBags(
-                        setBag(
-                          bags,
-                          ref,
-                          bagFor(bags, ref).filter((_, i) => i !== index),
-                        ),
-                      )
-                  : undefined
-              }
-            />
-          </div>
+          {/* Once placed, the outcome list is the record; the plan's bag would only disagree with it. */}
+          {step !== 'done' && (
+            <div className="layout__aside">
+              <LunchBag
+                student={student}
+                service={service}
+                weekdays={plan.weekdays}
+                dates={dates}
+                bags={bags}
+                feePerOrder={fee}
+                toOrder={toOrder}
+                showTotal={step !== 'check'}
+                onRemove={
+                  step === 'what'
+                    ? (ref, index) =>
+                        setBags(
+                          setBag(
+                            bags,
+                            ref,
+                            bagFor(bags, ref).filter((_, i) => i !== index),
+                          ),
+                        )
+                    : undefined
+                }
+              />
+            </div>
+          )}
         </div>
       )}
       <Footnote />

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { describeError } from '../api/errors';
-import { getMenu, getOrderHistory, placeOrders, uuid } from '../api/flexischools';
+import { useEffect, useRef, useState } from 'react';
+import { describeError, needsSignIn } from '../api/errors';
+import { ApiError, getMenu, getOrderHistory, placeOrders, uuid } from '../api/flexischools';
 import { getFulfillmentDatesFor, mapWithConcurrency } from '../api/lookup';
 import type { HistoryOrder, Student, StudentService, Wallet } from '../api/types';
 import {
@@ -58,6 +58,25 @@ const STATUS_LABEL: Record<
   error: { text: 'Could not check', tone: 'bad' },
 };
 
+/** Every date back to "Checking", with nothing ticked until it has been checked. */
+function unchecked(dates: string[]): Row[] {
+  return dates.map((date) => ({
+    date,
+    dueDate: null,
+    status: 'checking',
+    detail: '',
+    include: false,
+    selections: [],
+    amount: 0,
+    existing: [],
+  }));
+}
+
+/** A failure that leaves it open whether Flexischools took the orders: no answer came back. */
+function unanswered(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof ApiError && error.status >= 500);
+}
+
 export default function CheckStep({
   student,
   service,
@@ -70,22 +89,21 @@ export default function CheckStep({
   onPlaced,
   onError,
 }: Props) {
-  const [rows, setRows] = useState<Row[]>(() =>
-    dates.map((date) => ({
-      date,
-      dueDate: null,
-      status: 'checking',
-      detail: '',
-      include: false,
-      selections: [],
-      amount: 0,
-      existing: [],
-    })),
-  );
+  const [rows, setRows] = useState<Row[]>(() => unchecked(dates));
   const [checking, setChecking] = useState(true);
+  /** Bumped to check every date again. */
+  const [checkRun, setCheckRun] = useState(0);
+  const [checkError, setCheckError] = useState<{ message: string; retry: boolean } | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  /** The last batch got no answer, so every date was checked again before anything is resent. */
+  const [unsure, setUnsure] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * The keys the batch last went out with. The same dates sent again reuse them, so when a first
+   * try did go through, Flexischools sees a repeat rather than a second cart to charge for.
+   */
+  const sent = useRef<{ dates: string; cartKey: string; requestIds: string[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,7 +187,10 @@ export default function CheckStep({
       } catch (e) {
         if (!cancelled) {
           onError(e);
-          setError(describeError(e));
+          setCheckError({ message: describeError(e), retry: !needsSignIn(e) });
+          setRows((current) =>
+            current.map((row) => (row.status === 'checking' ? { ...row, status: 'error' } : row)),
+          );
         }
       } finally {
         if (!cancelled) setChecking(false);
@@ -179,7 +200,14 @@ export default function CheckStep({
     return () => {
       cancelled = true;
     };
-  }, [student, service, dates, bags, onError]);
+  }, [student, service, dates, bags, onError, checkRun]);
+
+  function checkAgain() {
+    setRows(unchecked(dates));
+    setChecking(true);
+    setCheckError(null);
+    setCheckRun((n) => n + 1);
+  }
 
   const included = rows.filter((row) => row.include && row.dueDate);
   const totals = cartTotals(
@@ -192,31 +220,44 @@ export default function CheckStep({
 
   async function place() {
     setPlacing(true);
-    setError(null);
+    setPlaceError(null);
+    setUnsure(false);
     const orders: PlannedOrder[] = included.map((row) => ({
       date: row.date,
       dueDate: row.dueDate as string,
       selections: row.selections,
     }));
-    const requestIds = orders.map(() => uuid());
+    const batch = orders.map((order) => order.date).join(',');
+    if (sent.current?.dates !== batch) {
+      sent.current = { dates: batch, cartKey: uuid(), requestIds: orders.map(() => uuid()) };
+    }
+    const { cartKey, requestIds } = sent.current;
     try {
       const response = await placeOrders(
-        buildPlaceOrdersBody({
-          student,
-          service,
-          orders,
-          feePerOrder,
-          cartKey: uuid(),
-          requestIds,
-        }),
+        buildPlaceOrdersBody({ student, service, orders, feePerOrder, cartKey, requestIds }),
       );
       onPlaced(summariseOutcomes(orders, requestIds, response), orders);
     } catch (e) {
       onError(e);
-      setError(describeError(e));
       setPlacing(false);
+      if (unanswered(e)) {
+        // The orders may have gone in with the answer lost on the way back, so look again
+        // before anything is sent twice.
+        setUnsure(true);
+        checkAgain();
+      } else {
+        setPlaceError(describeError(e));
+      }
     }
   }
+
+  let placeLabel = `Place ${included.length} ${included.length === 1 ? 'order' : 'orders'} for ${formatMoney(totals.total)}`;
+  if (placing) placeLabel = 'Placing…';
+  else if (checking) placeLabel = 'Checking dates…';
+  else if (checkError) placeLabel = 'Could not check dates';
+  else if (included.length === 0) placeLabel = 'Nothing to order';
+  else if (shortfall > 0) placeLabel = `Wallet ${formatMoney(shortfall)} short`;
+  const someFailed = !checking && !checkError && rows.some((row) => row.status === 'error');
 
   return (
     <section aria-labelledby="check-title">
@@ -228,14 +269,27 @@ export default function CheckStep({
           Check every date
         </h2>
       </div>
-      <p className="lede">
-        Each date is checked against the canteen calendar, that day’s menu and the orders already
-        placed for {student.studentFirstName}. Untick anything you would rather skip.
-      </p>
+      <p className="lede">Tick the dates to order for {student.studentFirstName}.</p>
 
-      {error && (
+      {checkError && (
         <p className="notice notice--bad" role="alert">
-          {error}
+          {checkError.message}
+          {checkError.retry && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={checkAgain}>
+                Try again
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {someFailed && (
+        <p className="notice notice--warn">
+          Some dates could not be checked.{' '}
+          <button type="button" className="link-button" onClick={checkAgain}>
+            Check again
+          </button>
         </p>
       )}
 
@@ -264,6 +318,7 @@ export default function CheckStep({
                 <tr key={row.date} data-status={selectable ? 'fine' : 'problem'}>
                   <td>
                     <input
+                      id={`pick-${row.date}`}
                       type="checkbox"
                       aria-label={`Order for ${formatShort(row.date)}`}
                       checked={row.include}
@@ -288,7 +343,12 @@ export default function CheckStep({
                       }}
                     />
                   </td>
-                  <td>{formatShort(row.date)}</td>
+                  <td>
+                    {/* The date ticks the box too, a far easier target on a phone. */}
+                    <label htmlFor={`pick-${row.date}`} className="check-table__pick">
+                      {formatShort(row.date)}
+                    </label>
+                  </td>
                   <td>
                     <span className={`status status--${label.tone}`}>{label.text}</span>
                     {row.detail && <div className="hint">{row.detail}</div>}
@@ -351,21 +411,29 @@ export default function CheckStep({
         </p>
       )}
 
-      <div className="actions">
+      <div className="actions actions--sticky">
+        {/* Up here rather than by the lede, so they show beside the button that was pressed. */}
+        {unsure && (
+          <p className="notice notice--warn" role="status">
+            No answer from Flexischools, so every date was checked again. Any order that went
+            through now shows as Already ordered.
+          </p>
+        )}
+        {placeError && (
+          <p className="notice notice--bad" role="alert">
+            {placeError}
+          </p>
+        )}
         <button type="button" className="button button--quiet" onClick={onBack} disabled={placing}>
           Back
         </button>
         <button
           type="button"
           className="button button--go"
-          disabled={checking || placing || included.length === 0 || shortfall > 0}
+          disabled={checking || placing || !!checkError || included.length === 0 || shortfall > 0}
           onClick={place}
         >
-          {placing
-            ? 'Placing…'
-            : checking
-              ? 'Checking dates…'
-              : `Place ${included.length} ${included.length === 1 ? 'order' : 'orders'} for ${formatMoney(totals.total)}`}
+          {placeLabel}
         </button>
       </div>
     </section>
