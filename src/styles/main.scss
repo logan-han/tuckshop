@@ -352,6 +352,46 @@ a {
   border-color: var(--rule);
 }
 
+/* orders already placed for the dates in step 3: a heads-up, quieter than a warning */
+.existing {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 36rem;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-tint);
+}
+
+.existing__title {
+  font-weight: 600;
+}
+
+/* what was ordered beside the dates that hold it, lined up like a table */
+.existing__list {
+  display: grid;
+  grid-template-columns: fit-content(50%) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.2rem 1rem;
+
+  dt {
+    font-weight: 500;
+  }
+
+  dd {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: var(--size-1);
+  }
+}
+
+.existing__note {
+  color: var(--ink-soft);
+  font-size: var(--size-1);
+  text-wrap: pretty;
+}
+
 /* ---------- sign in ---------- */
 
 .signin {

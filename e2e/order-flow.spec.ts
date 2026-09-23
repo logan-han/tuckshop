@@ -204,9 +204,10 @@ test.describe('ordering a term of lunches', () => {
     // The date chip carries the marker, and editing that date says what is already coming.
     await expect(page.getByRole('button', { name: /^23 Oct/ })).toContainText('ordered');
     await page.getByRole('button', { name: /^23 Oct/ }).click();
-    await expect(
-      page.getByText('Sam already has an order for Thu 23 Oct (Hot Dog).'),
-    ).toBeVisible();
+    const existing = page.getByRole('status');
+    await expect(existing).toContainText('Already ordered for Sam');
+    await expect(existing.getByRole('term')).toHaveText('Hot Dog');
+    await expect(existing.getByRole('definition')).toHaveText('Thu 23 Oct');
     await page.getByRole('button', { name: /^Every Thursday/ }).click();
     await page.getByRole('button', { name: /Chicken Tenders/ }).click();
     await page

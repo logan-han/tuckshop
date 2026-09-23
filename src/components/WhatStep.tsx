@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError } from '../api/errors';
 import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
@@ -71,18 +71,20 @@ function nameOf(day: number): string {
 }
 
 /**
- * What is already ordered, dates grouped by what they hold, since a recurring lunch is
- * usually the same each week: "Hot Dog on 9 Oct, 16 Oct and 23 Oct; Sushi Roll on 30 Oct".
+ * What is already ordered, one entry per distinct order with the dates that hold it, since a
+ * recurring lunch is usually the same each week: Hot Dog on 9 Oct, 16 Oct and 23 Oct.
  */
-function describeOrdered(dates: string[], existing: ExistingOrders): string {
+function groupOrdered(
+  dates: string[],
+  existing: ExistingOrders,
+  label: (date: string) => string,
+): Array<{ what: string; on: string[] }> {
   const byWhat = new Map<string, string[]>();
   for (const date of dates) {
-    const what = describeOrders(existing.get(date) ?? []);
-    byWhat.set(what, [...(byWhat.get(what) ?? []), formatDayMonth(date)]);
+    const what = describeOrders(existing.get(date) ?? []) || 'An order';
+    byWhat.set(what, [...(byWhat.get(what) ?? []), label(date)]);
   }
-  return [...byWhat]
-    .map(([what, on]) => (what ? `${what} on ${joinAnd(on)}` : joinAnd(on)))
-    .join('; ');
+  return [...byWhat].map(([what, on]) => ({ what, on }));
 }
 
 export default function WhatStep({
@@ -237,6 +239,17 @@ export default function WhatStep({
   const orderedDates = (ref.date !== undefined ? [ref.date] : dayDates).filter((date) =>
     existing.has(date),
   );
+  // The weekday's dates are all the same day, so they drop it; a single date keeps it.
+  const ordered = groupOrdered(
+    orderedDates,
+    existing,
+    ref.date === undefined ? formatDayMonth : formatShort,
+  );
+  // A long run of different orders is cut short, like the other lists of dates.
+  const orderedShown = ordered.length > 4 ? ordered.slice(0, 3) : ordered;
+  const orderedHidden = ordered
+    .slice(orderedShown.length)
+    .reduce((count, group) => count + group.on.length, 0);
   const emptyDays = weekdays.filter((d) => (bags.byDay[d]?.length ?? 0) === 0);
   const otherDaysEmpty =
     weekdays.length > 1 &&
@@ -380,19 +393,27 @@ export default function WhatStep({
         </p>
       )}
 
-      {orderedDates.length === 1 && (
-        <p className="notice notice--warn" role="status">
-          {student.studentFirstName} already has an order for {formatShort(orderedDates[0])} (
-          {describeOrders(existing.get(orderedDates[0]) ?? [])}). The date starts unticked at the
-          check; tick it there to order extra.
-        </p>
-      )}
-      {orderedDates.length > 1 && (
-        <p className="notice notice--warn" role="status">
-          {student.studentFirstName} already has an order for {orderedDates.length} of these{' '}
-          {dayName}s: {describeOrdered(orderedDates, existing)}. Those dates start unticked at the
-          check; tick them there to order extra.
-        </p>
+      {orderedDates.length > 0 && (
+        <div className="existing" role="status">
+          <p className="existing__title">Already ordered for {student.studentFirstName}</p>
+          <dl className="existing__list">
+            {orderedShown.map(({ what, on }) => (
+              <Fragment key={what}>
+                <dt>{what}</dt>
+                <dd>{joinAnd(on)}</dd>
+              </Fragment>
+            ))}
+          </dl>
+          {orderedHidden > 0 && (
+            <p className="existing__note">
+              Plus {orderedHidden} more dates; pick one above to see what’s on it.
+            </p>
+          )}
+          <p className="existing__note">
+            {orderedDates.length === 1 ? 'It starts' : 'They start'} unticked at the check, so
+            nothing doubles up.
+          </p>
+        </div>
       )}
 
       {loaded?.menu && menuDate && (

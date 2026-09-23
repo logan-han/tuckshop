@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { ApiError, getFulfillmentDates, getMenu } from '../api/flexischools';
-import type { FulfillmentDate } from '../api/types';
+import type { FulfillmentDate, HistoryOrder } from '../api/types';
 import { addDays } from '../engine/schedule';
 import { EMPTY_BAGS, type Bags } from '../engine/selections';
 import {
@@ -70,6 +70,12 @@ function renderStep(overrides: Partial<Props> = {}) {
 
   render(<Harness />);
   return spies;
+}
+
+/** An order already placed for a date, holding just the one item. */
+function orderOf(date: string, itemDisplayName: string): HistoryOrder {
+  const [line] = makeHistoryOrder(date).orderItems;
+  return makeHistoryOrder(date, { orderItems: [{ ...line, itemDisplayName }] });
 }
 
 beforeEach(() => {
@@ -281,7 +287,7 @@ describe('WhatStep', () => {
     expect(screen.queryByText('Loading the menu…')).not.toBeInTheDocument();
   });
 
-  it('warns that anything chosen goes on top of an order already placed', async () => {
+  it('lists what is already ordered and says those dates start unticked', async () => {
     renderStep({
       existing: new Map([
         [THURSDAYS[0], [makeHistoryOrder(THURSDAYS[0])]],
@@ -289,41 +295,56 @@ describe('WhatStep', () => {
       ]),
     });
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Sam already has an order for 2 of these Thursdays: Chicken Tenders (2) on 8 Oct and 22 Oct. Those dates start unticked at the check; tick them there to order extra.',
-    );
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent('Already ordered for Sam');
+    expect(within(note).getByRole('term')).toHaveTextContent('Chicken Tenders (2)');
+    expect(within(note).getByRole('definition')).toHaveTextContent('8 Oct and 22 Oct');
+    expect(note).toHaveTextContent('They start unticked at the check, so nothing doubles up.');
     expect(screen.getByRole('button', { name: /8 Oct ordered/ })).toBeInTheDocument();
   });
 
-  it('groups already-ordered dates by what they hold, and names the one date being edited', async () => {
+  it('gives each different order a line of its own, and names the one date being edited', async () => {
     const user = userEvent.setup();
-    const sushiOrder = makeHistoryOrder(THURSDAYS[1], {
-      orderItems: [
-        {
-          orderItemId: 2,
-          itemId: 2,
-          itemDisplayName: 'Sushi Roll - Tuna',
-          quantityOrdered: 1,
-          predefined: false,
-        },
-      ],
-    });
     renderStep({
       existing: new Map([
         [THURSDAYS[0], [makeHistoryOrder(THURSDAYS[0])]],
-        [THURSDAYS[1], [sushiOrder]],
+        [THURSDAYS[1], [orderOf(THURSDAYS[1], 'Sushi Roll - Tuna')]],
         [THURSDAYS[2], [makeHistoryOrder(THURSDAYS[2])]],
       ]),
     });
+    const lines = (role: 'term' | 'definition') =>
+      within(screen.getByRole('status'))
+        .getAllByRole(role)
+        .map((line) => line.textContent);
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Sam already has an order for 3 of these Thursdays: Chicken Tenders (2) on 8 Oct and 22 Oct; Sushi Roll on 15 Oct.',
-    );
+    await screen.findByRole('status');
+    expect(lines('term')).toEqual(['Chicken Tenders (2)', 'Sushi Roll']);
+    expect(lines('definition')).toEqual(['8 Oct and 22 Oct', '15 Oct']);
 
     await user.click(screen.getByRole('button', { name: /15 Oct ordered/ }));
+    expect(lines('term')).toEqual(['Sushi Roll']);
+    expect(lines('definition')).toEqual(['Thu 15 Oct']);
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Sam already has an order for Thu 15 Oct (Sushi Roll). The date starts unticked at the check; tick it there to order extra.',
+      'It starts unticked at the check, so nothing doubles up.',
     );
+  });
+
+  it('cuts a long run of different orders short', async () => {
+    const dates = [...THURSDAYS, '2026-10-29', '2026-11-05'];
+    renderStep({
+      dates,
+      existing: new Map(
+        dates.map((date, i): [string, HistoryOrder[]] => [date, [orderOf(date, `Item ${i + 1}`)]]),
+      ),
+    });
+
+    const note = await screen.findByRole('status');
+    expect(
+      within(note)
+        .getAllByRole('term')
+        .map((term) => term.textContent),
+    ).toEqual(['Item 1', 'Item 2', 'Item 3']);
+    expect(note).toHaveTextContent('Plus 2 more dates; pick one above to see what’s on it.');
   });
 
   it('leaves the empty dates out rather than blocking the plan', async () => {
