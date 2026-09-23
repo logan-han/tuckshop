@@ -287,7 +287,7 @@ describe('WhatStep', () => {
     expect(screen.queryByText('Loading the menu…')).not.toBeInTheDocument();
   });
 
-  it('lists what is already ordered and says those dates start unticked', async () => {
+  it('lists what is already ordered and on which dates', async () => {
     renderStep({
       existing: new Map([
         [THURSDAYS[0], [makeHistoryOrder(THURSDAYS[0])]],
@@ -298,8 +298,7 @@ describe('WhatStep', () => {
     const note = await screen.findByRole('status');
     expect(note).toHaveTextContent('Already ordered for Sam');
     expect(within(note).getByRole('term')).toHaveTextContent('Chicken Tenders (2)');
-    expect(within(note).getByRole('definition')).toHaveTextContent('8 Oct and 22 Oct');
-    expect(note).toHaveTextContent('They start unticked at the check, so nothing doubles up.');
+    expect(within(note).getByRole('definition')).toHaveTextContent('8 Oct, 22 Oct');
     expect(screen.getByRole('button', { name: /8 Oct ordered/ })).toBeInTheDocument();
   });
 
@@ -319,14 +318,11 @@ describe('WhatStep', () => {
 
     await screen.findByRole('status');
     expect(lines('term')).toEqual(['Chicken Tenders (2)', 'Sushi Roll']);
-    expect(lines('definition')).toEqual(['8 Oct and 22 Oct', '15 Oct']);
+    expect(lines('definition')).toEqual(['8 Oct, 22 Oct', '15 Oct']);
 
     await user.click(screen.getByRole('button', { name: /15 Oct ordered/ }));
     expect(lines('term')).toEqual(['Sushi Roll']);
     expect(lines('definition')).toEqual(['Thu 15 Oct']);
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'It starts unticked at the check, so nothing doubles up.',
-    );
   });
 
   it('cuts a long run of different orders short', async () => {

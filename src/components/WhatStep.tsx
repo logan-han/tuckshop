@@ -12,7 +12,6 @@ import {
   datesWithoutFood,
   describeMissing,
   hasOwnBag,
-  joinAnd,
   selectionsForDate,
   setBag,
   type BagRef,
@@ -400,7 +399,7 @@ export default function WhatStep({
             {orderedShown.map(({ what, on }) => (
               <Fragment key={what}>
                 <dt>{what}</dt>
-                <dd>{joinAnd(on)}</dd>
+                <dd>{on.join(', ')}</dd>
               </Fragment>
             ))}
           </dl>
@@ -409,10 +408,6 @@ export default function WhatStep({
               Plus {orderedHidden} more dates; pick one above to see what’s on it.
             </p>
           )}
-          <p className="existing__note">
-            {orderedDates.length === 1 ? 'It starts' : 'They start'} unticked at the check, so
-            nothing doubles up.
-          </p>
         </div>
       )}
 
