@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Session } from '../api/auth';
 import Masthead from './Masthead';
@@ -18,6 +18,20 @@ describe('Masthead', () => {
     render(<Masthead session={null} view="plan" onView={() => {}} onSignOut={() => {}} />);
     expect(screen.getByRole('link', { name: 'Tuckshop home' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Sections' })).not.toBeInTheDocument();
+  });
+
+  it('takes the brand home to the plan without reloading the page', () => {
+    const onView = vi.fn();
+    render(<Masthead session={session} view="orders" onView={onView} onSignOut={() => {}} />);
+    const home = screen.getByRole('link', { name: 'Tuckshop home' });
+
+    // A click the page keeps to itself...
+    expect(fireEvent.click(home)).toBe(false);
+    expect(onView).toHaveBeenCalledWith('plan');
+    // ...but one meant for a new tab is left to the browser.
+    onView.mockClear();
+    expect(fireEvent.click(home, { ctrlKey: true })).toBe(true);
+    expect(onView).not.toHaveBeenCalled();
   });
 
   it('marks the current section and switches between them', async () => {

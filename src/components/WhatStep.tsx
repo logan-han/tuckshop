@@ -39,6 +39,8 @@ interface Props {
   onSkipDate: (date: string) => void;
   /** Told which planned dates the canteen calendar says cannot be ordered for, once it is read. */
   onClosed?: (dates: string[]) => void;
+  /** A date to open on rather than the first weekday, such as one Flexischools just declined. */
+  initialDate?: string;
   onBack: () => void;
   onContinue: () => void;
   onError: (error: unknown) => void;
@@ -104,12 +106,15 @@ export default function WhatStep({
   onChange,
   onSkipDate,
   onClosed,
+  initialDate,
   onBack,
   onContinue,
   onError,
 }: Props) {
   const weekdays = useMemo(() => [...new Set(dates.map(weekdayOf))].sort(), [dates]);
-  const [target, setTarget] = useState<BagRef>({ day: weekdays[0] ?? 4 });
+  const [target, setTarget] = useState<BagRef>(
+    initialDate ? { date: initialDate } : { day: weekdays[0] ?? 4 },
+  );
 
   // Whatever was being looked at, kept on a date and weekday that are still in the plan.
   const ref = useMemo<BagRef>(() => {

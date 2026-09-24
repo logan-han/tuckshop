@@ -27,6 +27,7 @@ import {
 } from './engine/orders';
 import { bagFor, EMPTY_BAGS, setBag, type Bags } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
+import { clearDraft, holdsFood, loadDraft, saveDraft } from './state/draft';
 import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from './state/plan';
 
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
@@ -58,10 +59,15 @@ export default function App() {
   const [ordersEpoch, setOrdersEpoch] = useState(0);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
+  /** A date step 3 opens on, after "Fix" on a date Flexischools declined. */
+  const [fixDate, setFixDate] = useState<string | undefined>(undefined);
   const [banner, setBanner] = useState<string | null>(null);
 
   const signOut = useCallback((message: string | null = null) => {
+    // Signing out on purpose drops the bag; a session that lapsed keeps it for signing back in.
+    if (message === null) clearDraft();
     clearSession();
+    setFixDate(undefined);
     setSession(null);
     setStudents(null);
     setWallet(null);
@@ -134,7 +140,18 @@ export default function App() {
         setAvailable(open ?? []);
         setStudents(withFood);
         setWallet(walletInfo);
-        if (withFood.length === 1) {
+        // Back after a reload, or signing in again after the session lapsed: same bag, same step.
+        const draft = loadDraft(Date.now());
+        const resumed = draft
+          ? withFood
+              .flatMap((s) => s.services.map((svc) => ({ s, svc })))
+              .find(({ s, svc }) => batchOwner(s, svc) === draft.owner)
+          : undefined;
+        if (draft && resumed) {
+          chooseStudent(resumed.s, resumed.svc);
+          setBags(draft.bags);
+          setStep(draft.step);
+        } else if (withFood.length === 1) {
           // One child: pick them and their everyday service; only stop here if there is a
           // second service worth choosing.
           chooseStudent(withFood[0], withFood[0].services[0]);
@@ -173,6 +190,17 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [session, refreshWallet]);
+
+  // The bag is kept for the tab until it is placed. Nothing is written before the students load,
+  // so the empty bag of a page just reloaded cannot wipe the draft it is about to pick up.
+  useEffect(() => {
+    if (students === null) return;
+    if (student && service && step !== 'done' && holdsFood(bags)) {
+      saveDraft({ owner: batchOwner(student, service), bags, step, savedAt: Date.now() });
+    } else {
+      clearDraft();
+    }
+  }, [students, student, service, bags, step]);
 
   // Each step starts at the top; on a phone the button that got you here sits far down the page.
   useEffect(() => {
@@ -287,8 +315,15 @@ export default function App() {
                 onChange={setBags}
                 onSkipDate={(date) => updatePlan(skipDate(plan, date))}
                 onClosed={noteClosed}
-                onBack={() => setStep('when')}
-                onContinue={() => setStep('check')}
+                initialDate={fixDate}
+                onBack={() => {
+                  setFixDate(undefined);
+                  setStep('when');
+                }}
+                onContinue={() => {
+                  setFixDate(undefined);
+                  setStep('check');
+                }}
                 onError={handleError}
               />
             )}
@@ -327,11 +362,21 @@ export default function App() {
               <DoneStep
                 studentName={student?.studentFirstName ?? 'your student'}
                 outcomes={outcomes}
+                otherStudents={(students ?? []).filter((s) => s.studentKey !== student?.studentKey)}
                 onPlanAnother={() => {
                   setBags(EMPTY_BAGS);
                   setStep('when');
                 }}
                 onShowOrders={() => setView('orders')}
+                // The bag stays as it was; the dates that went in now show as already ordered.
+                onFix={(date) => {
+                  setFixDate(date);
+                  setStep('what');
+                }}
+                onOrderFor={(other) => {
+                  chooseStudent(other, other.services[0]);
+                  setStep(other.services.length > 1 ? 'who' : 'when');
+                }}
               />
             )}
           </div>

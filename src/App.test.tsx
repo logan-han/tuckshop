@@ -120,6 +120,7 @@ async function signInAs(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   clearSession();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   fetchMock.mockReset();
   fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
     Promise.resolve(respond(input.toString(), init)),
@@ -370,6 +371,140 @@ describe('App, from the plan to the orders', () => {
     expect(await screen.findByRole('heading', { name: 'Which days?' })).toBeVisible();
   });
 
+  it('keeps the bag through a reload, and drops it on signing out', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { unmount } = render(<App />);
+    await signInAs(user);
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    unmount();
+
+    // The page again, the way a pull-to-refresh leaves it: still signed in, nothing in memory.
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'What goes in the bag?' })).toBeVisible();
+    const bag = screen.getByRole('complementary', { name: 'Your lunch order so far' });
+    expect(bag).toHaveTextContent('Chicken Tenders');
+    // The order fee is fetched afresh, so the total settles once it arrives.
+    await waitFor(() => expect(bag).toHaveTextContent('$10.46'));
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument());
+    expect(window.sessionStorage.getItem('tuckshop.draft')).toBeNull();
+  });
+
+  it('gives the bag back after signing in again when the session lapsed', async () => {
+    let lapsed = false;
+    respondExcept('/payments/user-account', () =>
+      lapsed
+        ? new Response('expired', { status: 401 })
+        : new Response(JSON.stringify({ accountKey: 'a', availableBalance: 20 })),
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await signInAs(user);
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+
+    lapsed = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(await screen.findByRole('status')).toHaveTextContent('Sign in again.');
+
+    lapsed = false;
+    await user.clear(screen.getByLabelText('Email')); // remembered from the first sign-in
+    await signInAs(user);
+    expect(await screen.findByRole('heading', { name: 'What goes in the bag?' })).toBeVisible();
+    expect(
+      screen.getByRole('complementary', { name: 'Your lunch order so far' }),
+    ).toHaveTextContent('Chicken Tenders');
+  });
+
+  it('forgets the bag once it is ordered', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await signInAs(user);
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    expect(window.sessionStorage.getItem('tuckshop.draft')).toContain('tenders');
+
+    await user.click(screen.getByRole('button', { name: 'Check every date' }));
+    await user.click(await screen.findByRole('button', { name: 'Place 2 orders for $10.46' }));
+    await screen.findByRole('heading', { name: '2 lunches ordered for Sam' });
+    expect(window.sessionStorage.getItem('tuckshop.draft')).toBeNull();
+  });
+
+  it('goes back to a declined date to fix it, the other date now ordered', async () => {
+    let placed = false;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.endsWith('/api/v2.0/orders')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as PlaceOrdersBody;
+        placed = true;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              isSuccessful: false,
+              cartError: null,
+              ordersResponse: body.placeOrderRequests.map((request, index) => ({
+                orderRequestId: request.orderRequestId,
+                orderPlaced: index === 0,
+                orderKey: index === 0 ? { id: 1, value: 'key-8-oct' } : undefined,
+                error:
+                  index === 0
+                    ? null
+                    : {
+                        errorCode: 0,
+                        errorTitle: null,
+                        errorMessage: 'Chicken Tenders sold out.',
+                        multiOrderErrorMessage: null,
+                        renderType: null,
+                        params: null,
+                      },
+              })),
+            }),
+          ),
+        );
+      }
+      // Once placed, the history shows 8 Oct's order.
+      if (url.endsWith('/orders/order-history') && placed) {
+        const order = makeHistoryOrder('2026-10-08', { orderKey: { id: 1, value: 'key-8-oct' } });
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              hasMoreOrders: false,
+              orderCount: 1,
+              presentOrders: [{ dueDate: order.dueDate, orders: [order] }],
+              pastOrders: [],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(respond(url, init));
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await signInAs(user);
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    await user.click(screen.getByRole('button', { name: 'Check every date' }));
+    await user.click(await screen.findByRole('button', { name: 'Place 2 orders for $10.46' }));
+
+    expect(await screen.findByRole('heading', { name: '1 of 2 lunches ordered' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Fix 15 Oct' }));
+
+    expect(await screen.findByRole('heading', { name: 'What goes in the bag?' })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^15 Oct/ })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^8 Oct/ })).toHaveTextContent('ordered'),
+    );
+    expect(
+      screen.getByRole('complementary', { name: 'Your lunch order so far' }),
+    ).toHaveTextContent('Chicken Tenders');
+  });
+
   it('moves between planning and the orders list from the masthead', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<App />);
@@ -380,6 +515,11 @@ describe('App, from the plan to the orders', () => {
     expect(await screen.findByRole('heading', { name: 'Upcoming orders' })).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Plan lunches' }));
+    expect(await screen.findByRole('heading', { name: 'Which days?' })).toBeVisible();
+
+    // The logo goes home too, without reloading the page.
+    await user.click(screen.getByRole('button', { name: 'Upcoming orders' }));
+    await user.click(screen.getByRole('link', { name: 'Tuckshop home' }));
     expect(await screen.findByRole('heading', { name: 'Which days?' })).toBeVisible();
   });
 });

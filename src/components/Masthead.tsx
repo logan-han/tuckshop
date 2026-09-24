@@ -12,7 +12,23 @@ interface Props {
 export default function Masthead({ session, view, onView, onSignOut }: Props) {
   return (
     <header className="masthead">
-      <a className="brand" href="/" aria-label="Tuckshop home">
+      <a
+        className="brand"
+        href="/"
+        aria-label="Tuckshop home"
+        onClick={(event) => {
+          // Signed in, home is the plan; reloading would only fetch the whole account again.
+          const plain =
+            event.button === 0 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            !event.altKey;
+          if (!session || !plain) return;
+          event.preventDefault();
+          onView('plan');
+        }}
+      >
         <img className="brand__mark" src="/favicon.svg" alt="" />
         <span className="brand__name">tuckshop</span>
       </a>

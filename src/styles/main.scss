@@ -1174,6 +1174,12 @@ input[type='radio'] {
   }
 }
 
+/* a result has no button, so it stays on the date's line even on a phone */
+.order--outcome {
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  grid-template-areas: 'date details';
+}
+
 .footnote {
   margin-top: 3rem;
   padding-top: 1rem;
