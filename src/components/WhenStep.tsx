@@ -148,7 +148,9 @@ export default function WhenStep({
         <ul className="excluded" aria-label="Skipped dates">
           {skipped.length === 0 && (
             <li className="hint">
-              {plan.presetId === 'custom' ? 'Nothing skipped.' : 'No holidays fall on your days.'}
+              {plan.presetId === 'custom' || plan.weekdays.length === 0
+                ? 'Nothing skipped.'
+                : 'No holidays fall on your days.'}
             </li>
           )}
           {skipped.map((entry) => (

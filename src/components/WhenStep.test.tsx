@@ -144,6 +144,13 @@ describe('WhenStep', () => {
     );
   });
 
+  it('says nothing is skipped before any day is picked', () => {
+    renderStep({ plan: { ...plan, weekdays: [] }, dates: [] });
+    expect(screen.getByRole('list', { name: 'Skipped dates' })).toHaveTextContent(
+      'Nothing skipped.',
+    );
+  });
+
   it('says nothing is skipped in a range picked by hand', () => {
     renderStep({ plan: { ...plan, presetId: 'custom', excluded: [] } });
     expect(screen.getByText('Add holidays, camps or days off below.')).toBeInTheDocument();

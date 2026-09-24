@@ -371,10 +371,15 @@ input[type='radio'] {
   }
 }
 
+/* two short lines, so it still fits beside the buttons on a phone */
 .actions__bag {
+  display: grid;
+  justify-items: end;
   margin-left: auto;
   color: var(--ink-soft);
   font-size: var(--size-1);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
 
   /* beside the page, the bag itself shows this */
   @media (min-width: 60rem) {

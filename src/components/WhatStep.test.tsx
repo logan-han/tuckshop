@@ -117,7 +117,7 @@ describe('WhatStep', () => {
     expect(screen.getByText('Add food first')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Chicken Tenders/ }));
     await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
-    expect(screen.getByText('1 item · $4.90')).toBeInTheDocument();
+    expect(document.querySelector('.actions__bag')).toHaveTextContent('1 item $4.90 a lunch');
 
     expect(onChange).toHaveBeenCalledWith({
       byDay: { 4: [makeSelection(tenders)] },

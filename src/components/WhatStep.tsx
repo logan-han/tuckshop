@@ -331,7 +331,8 @@ export default function WhatStep({
             })}
           </div>
           {otherDaysEmpty && (
-            <p className="hint">
+            // clear of the chips, so the link's wider tap area cannot take a tap meant for one
+            <p className="hint" style={{ marginTop: '0.35rem' }}>
               <button
                 type="button"
                 className="link-button"
@@ -573,8 +574,14 @@ export default function WhatStep({
         <span className="actions__bag" aria-live="polite">
           {!anyFood
             ? 'Add food first'
-            : items.length > 0 &&
-              `${items.length} ${items.length === 1 ? 'item' : 'items'} · ${formatMoney(orderAmount(items))}`}
+            : items.length > 0 && (
+                <>
+                  <span>
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </span>{' '}
+                  <span>{formatMoney(orderAmount(items))} a lunch</span>
+                </>
+              )}
         </span>
         {missing.length > 0 && anyFood && (
           <span className="hint">

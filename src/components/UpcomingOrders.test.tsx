@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError, cancelOrder, getOrderHistory } from '../api/flexischools';
 import type { HistoryOrder, OrderHistory } from '../api/types';
-import { makeHistoryOrder, THURSDAYS } from '../test/fixtures';
+import { makeHistoryOrder, student, THURSDAYS } from '../test/fixtures';
 import UpcomingOrders from './UpcomingOrders';
 
 vi.mock('../api/flexischools', async (importOriginal) => ({
@@ -22,10 +22,10 @@ function group(date: string, orders = [makeHistoryOrder(date)]) {
   return { dueDate: `${date}T12:40:00`, orders };
 }
 
-function renderOrders(oneChild = false) {
+function renderOrders(onlyChild: string | null = null) {
   const onError = vi.fn();
   const onChanged = vi.fn();
-  render(<UpcomingOrders oneChild={oneChild} onError={onError} onChanged={onChanged} />);
+  render(<UpcomingOrders onlyChild={onlyChild} onError={onError} onChanged={onChanged} />);
   return { onError, onChanged };
 }
 
@@ -54,11 +54,24 @@ describe('UpcomingOrders', () => {
   });
 
   it('leaves out the name when there is only the one child', async () => {
-    renderOrders(true);
+    renderOrders(student.studentKey);
     const [row] = await screen.findAllByRole('listitem');
     expect(row).toHaveTextContent('Thu 8 Oct');
     expect(row).toHaveTextContent('Chicken Tenders (2) · $5.23');
     expect(row).not.toHaveTextContent('Sam Example');
+  });
+
+  it('names the orders of a child who is not listed, such as one with no open service', async () => {
+    const sibling = makeHistoryOrder(THURSDAYS[1], {
+      orderKey: { id: 2, value: 'order-sibling' },
+      studentKey: { id: 2, value: 'student-2' },
+      studentName: 'Alex Example',
+    });
+    history.mockResolvedValue(historyWith(group(THURSDAYS[1], [sibling])));
+    renderOrders(student.studentKey);
+
+    const [row] = await screen.findAllByRole('listitem');
+    expect(row).toHaveTextContent('Alex Example · Chicken Tenders (2)');
   });
 
   it('shows the quantity when more than one of an item was ordered', async () => {

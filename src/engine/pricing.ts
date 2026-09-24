@@ -1,4 +1,4 @@
-import type { MenuItem, MenuOption } from '../api/types';
+import type { MenuItem, MenuOption, MenuOptionSet } from '../api/types';
 
 /** Same rounding the portal uses before sending amounts. */
 export function round2(value: number): number {
@@ -56,23 +56,40 @@ export function unitPrice(selection: Selection): number {
   }
 }
 
+/** A set whose options are radio buttons: one at most, and once one is ticked, always one. */
+export function isSingleChoice(set: MenuOptionSet): boolean {
+  return set.optionSetRenderType === 1 || set.maxQuantity === 1;
+}
+
+/** The options an item starts with ticked, as the canteen marks them. */
+export function defaultChoices(item: MenuItem): OptionChoice[] {
+  return item.optionSets.flatMap((set) =>
+    set.options
+      .filter((o) => o.isDefault && o.isActive && o.inStock)
+      .map((o) => ({ optionKey: o.optionKey, quantity: 1 })),
+  );
+}
+
 /**
  * The least one serve can cost: the cheapest options each set that needs one will take, priced
  * the way the item is. A sandwich listed at $0 whose breads are $4.00 and $4.50 is from $4.00.
  */
 export function fromPrice(item: MenuItem): number {
   const chargeDefaults = item.priceOption === PRICE_OPTION.AllOptions;
-  const options = item.optionSets.flatMap((set) =>
-    set.options
+  const ticked = new Set(defaultChoices(item).map((c) => c.optionKey));
+  const options = item.optionSets.flatMap((set) => {
+    // Radio buttons that start with one ticked can be moved, but not cleared.
+    const stuck = isSingleChoice(set) && set.options.some((o) => ticked.has(o.optionKey));
+    return set.options
       .filter((o) => o.isActive && o.inStock)
       .map((o) => ({
         optionKey: o.optionKey,
         cost: o.isDefault && !chargeDefaults ? 0 : o.optionPrice,
       }))
       .sort((a, b) => a.cost - b.cost)
-      .slice(0, Math.max(0, set.minQuantity ?? 0))
-      .map(({ optionKey }) => ({ optionKey, quantity: 1 })),
-  );
+      .slice(0, Math.max(stuck ? 1 : 0, set.minQuantity ?? 0))
+      .map(({ optionKey }) => ({ optionKey, quantity: 1 }));
+  });
   return unitPrice({ item, quantity: 1, options, questions: [] });
 }
 

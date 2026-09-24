@@ -199,6 +199,23 @@ describe('App', () => {
     expect(screen.queryByText('Loading your Flexischools account…')).not.toBeInTheDocument();
   });
 
+  it('offers to load the account again when it could not be read', async () => {
+    let down = true;
+    respondExcept('/service-categories/1/students', () =>
+      down ? new Response('busy', { status: 503 }) : new Response(JSON.stringify([student])),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    await signInAs(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Flexischools is having trouble right now.');
+    down = false;
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Which days?' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('signs out again when Flexischools stops accepting the session', async () => {
     const user = userEvent.setup();
     respondExcept('/service-categories/1/students', () => new Response('expired', { status: 401 }));
@@ -391,6 +408,39 @@ describe('App, from the plan to the orders', () => {
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument());
     expect(window.sessionStorage.getItem('tuckshop.draft')).toBeNull();
+  });
+
+  it('keeps a cart that got no answer through a reload, so placing again cannot order twice', async () => {
+    const bodies: PlaceOrdersBody[] = [];
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.endsWith('/api/v2.0/orders')) {
+        bodies.push(JSON.parse(String(init?.body ?? '{}')) as PlaceOrdersBody);
+        // The first cart is still out when the page reloads, so it never gets an answer.
+        if (bodies.length === 1) return new Promise<Response>(() => {});
+      }
+      return Promise.resolve(respond(url, init));
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { unmount } = render(<App />);
+    await signInAs(user);
+    await user.click(await screen.findByRole('button', { name: 'Choose the food' }));
+    await user.click(await screen.findByRole('button', { name: /Chicken Tenders/ }));
+    await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    await user.click(screen.getByRole('button', { name: 'Check every date' }));
+    await user.click(await screen.findByRole('button', { name: 'Place 2 orders for $10.46' }));
+    expect(await screen.findByRole('button', { name: 'Placing…' })).toBeDisabled();
+    unmount();
+
+    // Pulled to refresh: the bag and the step come back, and so do the cart's keys, so
+    // Flexischools can tell the second try from new orders.
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Place 2 orders for $10.46' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].cartKey).toBe(bodies[0].cartKey);
+    expect(bodies[1].placeOrderRequests.map((r) => r.orderRequestId)).toEqual(
+      bodies[0].placeOrderRequests.map((r) => r.orderRequestId),
+    );
   });
 
   it('gives the bag back after signing in again when the session lapsed', async () => {

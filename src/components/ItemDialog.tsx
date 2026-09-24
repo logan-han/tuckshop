@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MenuItem } from '../api/types';
 import {
+  defaultChoices,
   describePrice,
   formatMoney,
   fromPrice,
+  isSingleChoice,
   lineTotal,
   missingChoices,
   splitName,
@@ -17,14 +19,6 @@ interface Props {
   onSave: (selection: Selection) => void;
   onRemove: () => void;
   onClose: () => void;
-}
-
-function defaultChoices(item: MenuItem): OptionChoice[] {
-  return item.optionSets.flatMap((set) =>
-    set.options
-      .filter((o) => o.isDefault && o.isActive && o.inStock)
-      .map((o) => ({ optionKey: o.optionKey, quantity: 1 })),
-  );
 }
 
 /** The description without its HTML, or null when the canteen left only a stray full stop. */
@@ -108,7 +102,7 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
 
         {item.optionSets.map((set) => {
           const setKeys = set.options.map((o) => o.optionKey);
-          const single = set.optionSetRenderType === 1 || set.maxQuantity === 1;
+          const single = isSingleChoice(set);
           // The portal reads a maxQuantity of 0 the same as null: no limit.
           const limit = set.maxQuantity || null;
           const chosenInSet = options.filter((c) => setKeys.includes(c.optionKey)).length;

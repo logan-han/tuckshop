@@ -6,8 +6,8 @@ import { formatMoney } from '../engine/pricing';
 import { addDays, dateOf, formatShort, todayIso } from '../engine/schedule';
 
 interface Props {
-  /** Whether the account has just the one child, so each order need not name them. */
-  oneChild?: boolean;
+  /** The account's only child, when it has just the one: their orders need not name them. */
+  onlyChild?: string | null;
   onError: (error: unknown) => void;
   onChanged: () => void;
 }
@@ -31,7 +31,7 @@ function describeRefusal(error: unknown, label: string): string {
   return describeError(error);
 }
 
-export default function UpcomingOrders({ oneChild = false, onError, onChanged }: Props) {
+export default function UpcomingOrders({ onlyChild = null, onError, onChanged }: Props) {
   const [groups, setGroups] = useState<OrderHistoryGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -96,8 +96,9 @@ export default function UpcomingOrders({ oneChild = false, onError, onChanged }:
   const total = live
     .flatMap((g) => g.orders)
     .filter((o) => !o.orderState.startsWith('Cancelled')).length;
+  // A sibling with no open service is not listed, but their orders still need their name.
   const named =
-    !oneChild || new Set(live.flatMap((g) => g.orders.map((o) => o.studentKey.value))).size > 1;
+    !onlyChild || live.some((g) => g.orders.some((o) => o.studentKey.value !== onlyChild));
 
   return (
     <section aria-labelledby="orders-title">

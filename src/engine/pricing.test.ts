@@ -227,6 +227,18 @@ describe('pricing', () => {
     const byDefault = bread([{ optionPrice: 4, isDefault: true }, { optionPrice: 4.5 }]);
     expect(fromPrice(byo(2, byDefault))).toBe(0);
     expect(fromPrice(byo(3, byDefault))).toBe(4);
+
+    // Optional radio buttons that start with a default ticked cannot be emptied again: the
+    // cheapest of them counts. Left unticked, or as checkboxes, they can be left out.
+    const sauce = (options: Array<Partial<MenuOption>>, optionSetRenderType: number) => ({
+      ...bread(options, 0),
+      maxQuantity: optionSetRenderType === 1 ? 1 : 0,
+      optionSetRenderType,
+    });
+    const tomato = { optionPrice: 0.3, isDefault: true };
+    expect(fromPrice(byo(3, sauce([tomato, { optionPrice: 0.5 }], 1)))).toBe(0.3);
+    expect(fromPrice(byo(3, sauce([{ ...tomato, isDefault: false }], 1)))).toBe(0);
+    expect(fromPrice(byo(3, sauce([tomato], 2)))).toBe(0);
   });
 
   it('totals a term of orders with a fee on each', () => {

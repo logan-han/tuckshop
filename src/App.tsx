@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clearSession, loadSession, type Session } from './api/auth';
 import { describeError, needsSignIn } from './api/errors';
 import {
@@ -28,6 +28,7 @@ import {
 import { bagFor, EMPTY_BAGS, setBag, type Bags } from './engine/selections';
 import { presetsFor, todayIso } from './engine/schedule';
 import { clearDraft, holdsFood, loadDraft, saveDraft } from './state/draft';
+import { loadPending, savePending, type PendingByOwner } from './state/pending';
 import { loadPlan, planDates, retargetPlan, savePlan, skipDate, type Plan } from './state/plan';
 
 type Step = 'who' | 'when' | 'what' | 'check' | 'done';
@@ -52,10 +53,14 @@ export default function App() {
   const [closed, setClosed] = useState<ReadonlySet<string>>(NO_DATES);
   /**
    * Dates sent in carts that got no answer, per child and service. Kept here, past Back, a
-   * switch to another child and a session that lapses mid order, so resending them reuses their
-   * keys and cannot place them twice.
+   * switch to another child and a session that lapses mid order, and for the tab past a reload,
+   * so resending them reuses their keys and cannot place them twice.
    */
-  const [pending, setPending] = useState<Record<string, PendingBatch>>({});
+  const [pending, setPending] = useState<PendingByOwner>(() => loadPending(Date.now()));
+  /** The same record, as last changed, so each change is saved the moment it is made. */
+  const pendingNow = useRef(pending);
+  /** Bumped by "Try again" when the account could not be loaded. */
+  const [accountTry, setAccountTry] = useState(0);
   const [ordersEpoch, setOrdersEpoch] = useState(0);
   const [step, setStep] = useState<Step>('who');
   const [outcomes, setOutcomes] = useState<OrderOutcome[]>([]);
@@ -83,6 +88,16 @@ export default function App() {
   }, []);
 
   const noteClosed = useCallback((dates: string[]) => setClosed(new Set(dates)), []);
+
+  // Saved there and then, not by an effect after the render: the cart goes out straight after.
+  const notePending = useCallback((owner: string, next: PendingBatch | null) => {
+    const held = { ...pendingNow.current };
+    if (next) held[next.owner] = next;
+    else delete held[owner];
+    pendingNow.current = held;
+    savePending(held, Date.now());
+    setPending(held);
+  }, []);
 
   /** Shared failure path: anything that means "sign in again" signs out, the rest is left to the caller. */
   const handleError = useCallback(
@@ -166,7 +181,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session, handleError, chooseStudent]);
+  }, [session, handleError, chooseStudent, accountTry]);
 
   useEffect(() => {
     if (!student || !service) return;
@@ -265,12 +280,28 @@ export default function App() {
       {banner && (
         <p className="notice notice--bad" role="alert">
           {banner}
+          {/* the account never loaded, and an installed app has no reload button */}
+          {students === null && (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setBanner(null);
+                  setAccountTry((n) => n + 1);
+                }}
+              >
+                Try again
+              </button>
+            </>
+          )}
         </p>
       )}
 
       {view === 'orders' ? (
         <UpcomingOrders
-          oneChild={students?.length === 1}
+          onlyChild={students?.length === 1 ? students[0].studentKey : null}
           onError={handleError}
           onChanged={refreshAccount}
         />
@@ -345,14 +376,7 @@ export default function App() {
                 }}
                 onError={handleError}
                 pending={pending[batchOwner(student, service)] ?? null}
-                onPending={(next) =>
-                  setPending((current) => {
-                    const held = { ...current };
-                    if (next) held[next.owner] = next;
-                    else delete held[batchOwner(student, service)];
-                    return held;
-                  })
-                }
+                onPending={(next) => notePending(batchOwner(student, service), next)}
                 onOrdersChanged={refreshAccount}
               />
             )}
