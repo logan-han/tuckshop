@@ -241,7 +241,11 @@ export default function App() {
       )}
 
       {view === 'orders' ? (
-        <UpcomingOrders onError={handleError} onChanged={refreshAccount} />
+        <UpcomingOrders
+          oneChild={students?.length === 1}
+          onError={handleError}
+          onChanged={refreshAccount}
+        />
       ) : (
         <div className="layout">
           <div className="layout__main">

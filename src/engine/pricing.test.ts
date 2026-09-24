@@ -1,7 +1,9 @@
-import type { MenuItem } from '../api/types';
+import type { MenuItem, MenuOption, MenuOptionSet } from '../api/types';
 import {
   cartTotals,
+  describePrice,
   formatMoney,
+  fromPrice,
   lineTotal,
   missingChoices,
   orderAmount,
@@ -179,6 +181,52 @@ describe('pricing', () => {
     expect(unitPrice(priced(2))).toBe(4.7);
     expect(unitPrice(priced(0))).toBe(0.5);
     expect(unitPrice(priced(3))).toBe(1.5);
+  });
+
+  it('works out the least an item can cost from the options it has to have', () => {
+    // A plain item, and one whose only required set has a free choice: their listed price.
+    expect(describePrice(makeItem())).toBe('$4.90');
+    expect(describePrice(sandwich)).toBe('$4.20');
+
+    const bread = (options: Array<Partial<MenuOption>>, minQuantity = 1) => ({
+      ...sandwich.optionSets[0],
+      minQuantity,
+      options: options.map((o, i) => ({
+        ...sandwich.optionSets[0].options[0],
+        optionKey: `bread-${i}`,
+        ...o,
+      })),
+    });
+    const byo = (priceOption: number, set: MenuOptionSet, itemPrice = 0): MenuItem => ({
+      ...sandwich,
+      itemPrice,
+      priceOption,
+      optionSets: [set, sandwich.optionSets[1]],
+    });
+
+    // Listed at $0 and priced by its bread; a cheaper bread that is sold out or gone is no help.
+    const breads = bread([
+      { optionPrice: 3.5, inStock: false },
+      { optionPrice: 3.8, isActive: false },
+      { optionPrice: 4.5 },
+      { optionPrice: 4 },
+    ]);
+    expect(fromPrice(byo(2, breads))).toBe(4);
+    expect(describePrice(byo(2, breads))).toBe('from $4.00');
+    // Summed options ignore the item's own price; a fixed price ignores the options.
+    expect(describePrice(byo(0, breads, 5))).toBe('from $4.00');
+    expect(describePrice(byo(1, breads, 5))).toBe('$5.00');
+    // Nothing it has to have costs anything, so there is no "from $0.00".
+    expect(describePrice(byo(0, bread([{ optionPrice: 4 }], 0), 5))).toBe('$0.00');
+
+    // Two to choose means the two cheapest.
+    const twoOf = bread([{ optionPrice: 1 }, { optionPrice: 0.5 }, { optionPrice: 0.8 }], 2);
+    expect(fromPrice(byo(2, twoOf, 4.2))).toBe(5.5);
+
+    // A default option is free unless the item charges for every option.
+    const byDefault = bread([{ optionPrice: 4, isDefault: true }, { optionPrice: 4.5 }]);
+    expect(fromPrice(byo(2, byDefault))).toBe(0);
+    expect(fromPrice(byo(3, byDefault))).toBe(4);
   });
 
   it('totals a term of orders with a fee on each', () => {

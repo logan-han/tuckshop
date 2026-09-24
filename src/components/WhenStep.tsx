@@ -32,6 +32,14 @@ export default function WhenStep({
 }: Props) {
   const [newExclusion, setNewExclusion] = useState('');
   const ordered = dates.filter((date) => existing.has(date));
+  // Only what would otherwise be ordered: a Tuesday holiday means nothing to a Thursday plan.
+  const skipped = plan.excluded.filter(
+    (entry) =>
+      plan.weekdays.includes(weekdayOf(entry.date)) &&
+      entry.date >= plan.from &&
+      entry.date <= plan.to,
+  );
+  const skippable = dates.includes(newExclusion);
 
   function toggleWeekday(value: number) {
     const weekdays = plan.weekdays.includes(value)
@@ -41,7 +49,7 @@ export default function WhenStep({
   }
 
   function addExclusion() {
-    if (!isIsoDate(newExclusion)) return;
+    if (!skippable) return;
     onChange(skipDate(plan, newExclusion));
     setNewExclusion('');
   }
@@ -63,16 +71,17 @@ export default function WhenStep({
         <span className="field__label" id="weekdays-label">
           Days of the week
         </span>
-        <div className="chips" role="group" aria-labelledby="weekdays-label">
+        <div className="chips chips--week" role="group" aria-labelledby="weekdays-label">
           {WEEKDAYS.map((day) => (
             <button
               key={day.value}
               type="button"
               className="chip"
+              aria-label={day.long}
               aria-pressed={plan.weekdays.includes(day.value)}
               onClick={() => toggleWeekday(day.value)}
             >
-              {day.long}
+              {day.short}
             </button>
           ))}
         </div>
@@ -132,21 +141,26 @@ export default function WhenStep({
       <div className="field" style={{ marginTop: '1.25rem' }}>
         <span className="field__label">Skip these dates</span>
         <p className="hint">
-          Public holidays and mid-term breaks are already listed for the chosen term. Add camps,
-          excursions or days off here.
+          {plan.presetId === 'custom'
+            ? 'Add holidays, camps or days off below.'
+            : 'Holidays in this term are already skipped. Add camps or days off below.'}
         </p>
         <ul className="excluded" aria-label="Skipped dates">
-          {plan.excluded.length === 0 && <li className="hint">Nothing skipped.</li>}
-          {plan.excluded.map((entry) => (
+          {skipped.length === 0 && (
+            <li className="hint">
+              {plan.presetId === 'custom' ? 'Nothing skipped.' : 'No holidays fall on your days.'}
+            </li>
+          )}
+          {skipped.map((entry) => (
             <li key={entry.date}>
               <span>
                 {formatShort(entry.date)}
-                {plan.weekdays.includes(weekdayOf(entry.date)) ? '' : ' (not one of your days)'}
                 <span className="hint"> {entry.reason}</span>
               </span>
               <button
                 type="button"
                 className="link-button"
+                aria-label={`Don’t skip ${formatShort(entry.date)}`}
                 onClick={() =>
                   onChange({
                     ...plan,
@@ -154,7 +168,7 @@ export default function WhenStep({
                   })
                 }
               >
-                keep it
+                Don’t skip
               </button>
             </li>
           ))}
@@ -178,27 +192,32 @@ export default function WhenStep({
             type="button"
             className="button button--quiet"
             onClick={addExclusion}
-            disabled={!isIsoDate(newExclusion)}
+            disabled={!skippable}
           >
             Skip it
           </button>
         </div>
+        {isIsoDate(newExclusion) && !skippable && (
+          <p className="hint" role="status">
+            {formatShort(newExclusion)} is not in the plan.
+          </p>
+        )}
       </div>
 
       <p className="count-line" aria-live="polite">
-        <strong>{dates.length}</strong> {dates.length === 1 ? 'lunch' : 'lunches'} to order
+        <strong>{dates.length}</strong> {dates.length === 1 ? 'lunch' : 'lunches'} to order{' '}
         {dates.length > 0 && (
-          <span className="hint">
-            {' '}
-            · first {formatShort(dates[0])}, last {formatShort(dates[dates.length - 1])}
+          <span className="count-line__range hint">
+            {dates.length === 1
+              ? formatShort(dates[0])
+              : `${formatShort(dates[0])} to ${formatShort(dates[dates.length - 1])}`}
           </span>
         )}
-        {ordered.length > 0 && <span className="hint"> · {ordered.length} already ordered</span>}
       </p>
       {ordered.length > 0 && (
         <p className="hint" role="status">
-          There is already an order for {listDates(ordered)}. Those dates stay in the plan in case
-          you want to add to them, and start unticked at the check.{' '}
+          Already ordered: {listDates(ordered)}. {ordered.length === 1 ? 'It starts' : 'They start'}{' '}
+          unticked at the check.{' '}
           <button
             type="button"
             className="link-button"
@@ -208,7 +227,7 @@ export default function WhenStep({
               )
             }
           >
-            Skip them
+            {ordered.length === 1 ? 'Skip that date' : 'Skip those dates'}
           </button>
         </p>
       )}

@@ -219,8 +219,11 @@ a {
   cursor: pointer;
   text-decoration: none;
 
-  &:hover:not(:disabled) {
-    background: #000;
+  /* on a touch screen a tapped button would keep its hover colour into the next step */
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #000;
+    }
   }
 
   &:disabled {
@@ -233,8 +236,10 @@ a {
   background: var(--go);
   border-color: var(--go);
 
-  &:hover:not(:disabled) {
-    background: var(--go-deep);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: var(--go-deep);
+    }
   }
 }
 
@@ -243,8 +248,10 @@ a {
   color: var(--ink);
   border-color: var(--rule-strong);
 
-  &:hover:not(:disabled) {
-    background: var(--paper-dim);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: var(--paper-dim);
+    }
   }
 }
 
@@ -253,8 +260,10 @@ a {
   color: var(--bad);
   border-color: var(--bad);
 
-  &:hover:not(:disabled) {
-    background: var(--bad-tint);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: var(--bad-tint);
+    }
   }
 }
 
@@ -262,6 +271,12 @@ a {
   min-height: 2.1rem;
   padding: 0.25rem 0.75rem;
   font-size: var(--size-1);
+
+  /* small to look at, not to hit with a thumb */
+  @media (pointer: coarse) {
+    min-height: 2.75rem;
+    padding-inline: 1rem;
+  }
 }
 
 .link-button {
@@ -271,6 +286,22 @@ a {
   color: var(--go);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.link-button--danger {
+  color: var(--bad);
+}
+
+/* a word or two of text is a small target for a thumb, so the tap area reaches past it */
+.link-button,
+.bag__remove {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -0.5rem -0.25rem;
+  }
 }
 
 .field {
@@ -337,6 +368,17 @@ input[type='radio'] {
     border-top: 1px solid var(--rule);
     background: var(--paper);
     box-shadow: 0 -0.5rem 1rem -0.75rem rgba(27, 26, 23, 0.3);
+  }
+}
+
+.actions__bag {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: var(--size-1);
+
+  /* beside the page, the bag itself shows this */
+  @media (min-width: 60rem) {
+    display: none;
   }
 }
 
@@ -469,6 +511,18 @@ input[type='radio'] {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* five short days fit one row, even on a phone */
+.chips--week {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  max-width: 24rem;
+
+  .chip {
+    justify-content: center;
+    padding-inline: 0.25rem;
+  }
 }
 
 .chip {
@@ -670,6 +724,10 @@ input[type='radio'] {
   }
 }
 
+.count-line__range {
+  display: block;
+}
+
 /* ---------- menu ---------- */
 
 .menu-search {
@@ -788,6 +846,20 @@ input[type='radio'] {
   margin-bottom: 1rem;
 }
 
+/* a long list of fillings scrolls under the buttons rather than taking them with it */
+.dialog .actions {
+  position: sticky;
+  bottom: 0;
+  margin: 1rem -1.5rem -1.5rem;
+  padding: 0.75rem 1.5rem max(0.75rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+
+  .button--go {
+    flex: 1;
+  }
+}
+
 .option-set {
   margin: 1rem 0;
   border: 0;
@@ -803,7 +875,8 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.35rem 0;
+  min-height: 2.75rem;
+  padding: 0.2rem 0;
 
   &[data-soldout='true'] {
     color: var(--ink-faint);
@@ -1082,6 +1155,8 @@ input[type='radio'] {
 .order__action {
   grid-area: action;
   justify-self: end;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .order__items {

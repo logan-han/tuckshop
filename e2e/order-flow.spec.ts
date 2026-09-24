@@ -197,8 +197,7 @@ test.describe('ordering a term of lunches', () => {
   test('leaves out sold-out days and days that already have an order', async ({ page }) => {
     await mockFlexischools(page, { soldOutOn: '2036-10-16', alreadyOrderedOn: '2036-10-23' });
     await signInAndPlan(page);
-    await expect(page.getByText('1 already ordered')).toBeVisible();
-    await expect(page.getByText('There is already an order for Thu 23 Oct.')).toBeVisible();
+    await expect(page.getByText('Already ordered: Thu 23 Oct.')).toBeVisible();
     await page.getByRole('button', { name: 'Choose the food' }).click();
 
     // The date chip carries the marker, and editing that date says what is already coming.
@@ -242,8 +241,10 @@ test.describe('ordering a term of lunches', () => {
     await page.getByRole('button', { name: 'Upcoming orders' }).click();
     await expect(page.getByRole('heading', { name: 'Upcoming orders' })).toBeVisible();
     await expect(page.getByText('Hot Dog', { exact: false })).toBeVisible();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Cancel' }).click();
+    const cancelled = page.waitForRequest((request) => request.method() === 'DELETE');
+    await page.getByRole('button', { name: /^Yes, cancel/ }).click();
+    expect((await cancelled).url()).toContain('/orders/');
     await expect(page.getByText('Hot Dog', { exact: false })).toBeVisible(); // mock history is static
   });
 
@@ -408,7 +409,7 @@ test.describe('ordering a term of lunches', () => {
     // The third Thursday gets a hot dog instead. Its own menu is loaded, and it starts from
     // every Thursday's lunch, so the tenders come out and the hot dog goes in.
     await page.getByRole('button', { name: /^23 Oct/ }).click();
-    await expect(page.getByText('gets every Thursday', { exact: false })).toBeVisible();
+    await expect(page.getByText('gets the Thursday lunch', { exact: false })).toBeVisible();
     expect(captured.menuDueDates).toContain('2036-10-23T12:40:00');
     await hotSnacks.getByRole('button', { name: /Hot Dog/ }).click();
     await page
@@ -434,7 +435,7 @@ test.describe('ordering a term of lunches', () => {
       .getByRole('button', { name: /Add to the bag/ })
       .click();
     await expect(bag.getByText('Thu 30 Oct')).toBeVisible();
-    await page.getByRole('button', { name: 'Same as every Thursday' }).click();
+    await page.getByRole('button', { name: 'Use the Thursday lunch' }).click();
     await expect(bag.getByText('Thu 30 Oct')).toHaveCount(0);
     await expect(bag.getByText('$20.52')).toBeVisible();
 

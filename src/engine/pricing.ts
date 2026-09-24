@@ -56,6 +56,34 @@ export function unitPrice(selection: Selection): number {
   }
 }
 
+/**
+ * The least one serve can cost: the cheapest options each set that needs one will take, priced
+ * the way the item is. A sandwich listed at $0 whose breads are $4.00 and $4.50 is from $4.00.
+ */
+export function fromPrice(item: MenuItem): number {
+  const chargeDefaults = item.priceOption === PRICE_OPTION.AllOptions;
+  const options = item.optionSets.flatMap((set) =>
+    set.options
+      .filter((o) => o.isActive && o.inStock)
+      .map((o) => ({
+        optionKey: o.optionKey,
+        cost: o.isDefault && !chargeDefaults ? 0 : o.optionPrice,
+      }))
+      .sort((a, b) => a.cost - b.cost)
+      .slice(0, Math.max(0, set.minQuantity ?? 0))
+      .map(({ optionKey }) => ({ optionKey, quantity: 1 })),
+  );
+  return unitPrice({ item, quantity: 1, options, questions: [] });
+}
+
+/** An item's price as the menu shows it: "$4.90", or "from $4.00" when its options decide it. */
+export function describePrice(item: MenuItem): string {
+  const from = fromPrice(item);
+  return from > 0 && from !== round2(item.itemPrice)
+    ? `from ${formatMoney(from)}`
+    : formatMoney(from);
+}
+
 export function lineTotal(selection: Selection): number {
   return round2(unitPrice(selection) * selection.quantity);
 }

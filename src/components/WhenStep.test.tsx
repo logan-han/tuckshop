@@ -46,6 +46,7 @@ describe('WhenStep', () => {
       'aria-pressed',
       'true',
     );
+    expect(screen.getByRole('button', { name: 'Thursday' })).toHaveTextContent('Thu');
     await user.click(screen.getByRole('button', { name: 'Tuesday' }));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ weekdays: [2, 4] }));
 
@@ -92,14 +93,17 @@ describe('WhenStep', () => {
     expect(screen.getByRole('button', { name: 'Choose the food' })).toBeDisabled();
   });
 
-  it('adds and drops skipped dates, flagging one that is not a chosen weekday', async () => {
+  it('adds and drops skipped dates', async () => {
     const user = userEvent.setup();
-    const { onChange } = renderStep();
+    const thursdayHoliday = { date: '2026-10-29', reason: 'Pupil-free day' };
+    const { onChange } = renderStep({
+      plan: { ...plan, excluded: [thursdayHoliday, ...plan.excluded] },
+    });
 
     const skipped = screen.getByRole('list', { name: 'Skipped dates' });
+    expect(skipped).toHaveTextContent('Thu 29 Oct Pupil-free day');
     // 3 November 2026 is a Tuesday, and only Thursdays are being ordered.
-    expect(skipped).toHaveTextContent('Tue 3 Nov (not one of your days)');
-    expect(skipped).toHaveTextContent('Melbourne Cup Day');
+    expect(skipped).not.toHaveTextContent('Melbourne Cup Day');
 
     expect(screen.getByRole('button', { name: 'Skip it' })).toBeDisabled();
     await user.type(screen.getByLabelText('Skip another date'), '2026-10-22');
@@ -108,17 +112,41 @@ describe('WhenStep', () => {
       expect.objectContaining({
         excluded: [
           { date: '2026-10-22', reason: 'Skipped' },
+          thursdayHoliday,
           { date: '2026-11-03', reason: 'Melbourne Cup Day' },
         ],
       }),
     );
 
-    await user.click(screen.getByRole('button', { name: 'keep it' }));
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ excluded: [] }));
+    await user.click(screen.getByRole('button', { name: 'Don’t skip Thu 29 Oct' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ excluded: plan.excluded }));
+  });
+
+  it('will not skip a date that is not in the plan', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep();
+
+    // A Tuesday, and only Thursdays are planned.
+    await user.type(screen.getByLabelText('Skip another date'), '2026-10-20');
+    expect(screen.getByText('Tue 20 Oct is not in the plan.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Skip it' })).toBeDisabled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('says when nothing is skipped', () => {
-    renderStep({ plan: { ...plan, excluded: [] } });
+    // The term's only holiday is a Tuesday, and only Thursdays are planned.
+    renderStep();
+    expect(
+      screen.getByText('Holidays in this term are already skipped.', { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Skipped dates' })).toHaveTextContent(
+      'No holidays fall on your days.',
+    );
+  });
+
+  it('says nothing is skipped in a range picked by hand', () => {
+    renderStep({ plan: { ...plan, presetId: 'custom', excluded: [] } });
+    expect(screen.getByText('Add holidays, camps or days off below.')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Skipped dates' })).toHaveTextContent(
       'Nothing skipped.',
     );
@@ -127,13 +155,13 @@ describe('WhenStep', () => {
   it('counts the lunches and names the first and last', () => {
     renderStep();
     expect(screen.getByText(/lunches to order/)).toHaveTextContent(
-      '3 lunches to order · first Thu 8 Oct, last Thu 22 Oct',
+      '3 lunches to order Thu 8 Oct to Thu 22 Oct',
     );
   });
 
   it('counts a single lunch in the singular', () => {
     renderStep({ dates: [THURSDAYS[0]] });
-    expect(screen.getByText(/lunch to order/)).toHaveTextContent('1 lunch to order');
+    expect(screen.getByText(/lunch to order/)).toHaveTextContent('1 lunch to order Thu 8 Oct');
   });
 
   it('points out dates that already have an order and offers to skip them all', async () => {
@@ -141,12 +169,11 @@ describe('WhenStep', () => {
     const existing = new Map(THURSDAYS.map((date) => [date, [makeHistoryOrder(date)]]));
     const { onChange } = renderStep({ existing });
 
-    expect(screen.getByText(/already ordered/)).toHaveTextContent('3 already ordered');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'There is already an order for Thu 8 Oct, Thu 15 Oct, Thu 22 Oct.',
+      'Already ordered: Thu 8 Oct, Thu 15 Oct, Thu 22 Oct. They start unticked at the check.',
     );
 
-    await user.click(screen.getByRole('button', { name: 'Skip them' }));
+    await user.click(screen.getByRole('button', { name: 'Skip those dates' }));
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
         excluded: [

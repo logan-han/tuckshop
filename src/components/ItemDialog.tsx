@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MenuItem } from '../api/types';
 import {
+  describePrice,
   formatMoney,
+  fromPrice,
   lineTotal,
   missingChoices,
   splitName,
@@ -62,6 +64,8 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
   const missing = missingChoices(selection);
   const [title, detail] = splitName(item.name);
   const description = plainDescription(item.description);
+  // A $0 cup whose flavours carry the price has no price worth heading it; the button has the total.
+  const priced = fromPrice(item) > 0;
   const maxQuantity =
     item.hasQuantitySellLimit && item.quantityLeft !== null ? Math.max(1, item.quantityLeft) : 20;
 
@@ -90,10 +94,17 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
           {title}
         </h2>
         {detail && <p className="dialog__detail">{detail}</p>}
-        <p className="dialog__price">
-          {formatMoney(item.itemPrice)}
-          {description && <span className="hint"> · {description}</span>}
-        </p>
+        {(priced || description) && (
+          <p className="dialog__price">
+            {priced && describePrice(item)}
+            {description && (
+              <span className="hint">
+                {priced && ' · '}
+                {description}
+              </span>
+            )}
+          </p>
+        )}
 
         {item.optionSets.map((set) => {
           const setKeys = set.options.map((o) => o.optionKey);
@@ -192,6 +203,14 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
           )}
         </div>
 
+        {existing && (
+          <p>
+            <button type="button" className="link-button link-button--danger" onClick={onRemove}>
+              Take out of the bag
+            </button>
+          </p>
+        )}
+
         {missing.length > 0 && <p className="hint">Still to choose: {missing.join(', ')}.</p>}
 
         <div className="actions">
@@ -203,11 +222,6 @@ export default function ItemDialog({ item, existing, onSave, onRemove, onClose }
           >
             {existing ? 'Update' : 'Add to the bag'} · {formatMoney(lineTotal(selection))}
           </button>
-          {existing && (
-            <button type="button" className="button button--danger" onClick={onRemove}>
-              Take out of the bag
-            </button>
-          )}
           <button type="button" className="button button--quiet" onClick={onClose}>
             Cancel
           </button>

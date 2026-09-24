@@ -13,6 +13,7 @@ import {
   makeHistoryOrder,
   makeItem,
   makeMenu,
+  makeOption,
   makeOptionSet,
   makeSelection,
   student,
@@ -99,9 +100,7 @@ describe('WhatStep', () => {
 
     expect(await screen.findByRole('heading', { name: 'Hot Food' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Chicken Tenders \(2\) \$4\.90/ })).toBeEnabled();
-    expect(
-      screen.getByText(/Showing the Lunch menu for Thu 8 Oct, the first Thursday/),
-    ).toBeVisible();
+    expect(screen.getByText('Lunch menu for Thu 8 Oct. Other Thursdays may differ.')).toBeVisible();
     expect(menu).toHaveBeenCalledWith(
       expect.objectContaining({ dueDate: '2026-10-08T12:40:00', schoolKey: 'school-1' }),
     );
@@ -115,8 +114,10 @@ describe('WhatStep', () => {
 
     await screen.findByRole('heading', { name: 'Hot Food' });
     expect(screen.getByRole('button', { name: 'Check every date' })).toBeDisabled();
+    expect(screen.getByText('Add food first')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Chicken Tenders/ }));
     await user.click(screen.getByRole('button', { name: 'Add to the bag · $4.90' }));
+    expect(screen.getByText('1 item · $4.90')).toBeInTheDocument();
 
     expect(onChange).toHaveBeenCalledWith({
       byDay: { 4: [makeSelection(tenders)] },
@@ -149,6 +150,30 @@ describe('WhatStep', () => {
     await user.clear(search);
     await user.type(search, 'pavlova');
     expect(screen.getByText('Nothing on the menu matches “pavlova”.')).toBeInTheDocument();
+  });
+
+  it('prices an item listed at $0 by the cheapest option it needs', async () => {
+    const byo = makeItem({
+      itemKey: 'byo',
+      name: 'Build-Your-Own Sandwich',
+      itemPrice: 0,
+      priceOption: 2,
+      optionSets: [
+        makeOptionSet({
+          options: [
+            makeOption({ optionPrice: 4.5 }),
+            makeOption({ optionKey: 'wrap', name: 'Wrap', optionPrice: 4 }),
+          ],
+        }),
+      ],
+    });
+    menu.mockResolvedValue(makeMenu([makeCategory([byo, sushi])]));
+    renderStep();
+
+    expect(
+      await screen.findByRole('button', { name: /Build-Your-Own Sandwich from \$4\.00/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sushi Roll \$3\.50/ })).toBeInTheDocument();
   });
 
   it('greys out an item the canteen has sold out of', async () => {
@@ -202,7 +227,9 @@ describe('WhatStep', () => {
     await screen.findByRole('heading', { name: 'Hot Food' });
     await user.click(screen.getByRole('button', { name: /15 Oct/ }));
     expect(
-      await screen.findByText(/This date gets every Thursday’s lunch; change anything here/),
+      await screen.findByText(
+        /Thu 15 Oct gets the Thursday lunch\. Change anything to give it its own\./,
+      ),
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: /Sushi Roll/ }));
@@ -215,7 +242,7 @@ describe('WhatStep', () => {
     expect(screen.getByRole('button', { name: /15 Oct 2 items/ })).toBeInTheDocument();
     expect(screen.getByText(/Thu 15 Oct has a lunch of its own/)).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Same as every Thursday' }));
+    await user.click(screen.getByRole('button', { name: 'Use the Thursday lunch' }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ byDate: {}, byDay: { 4: [makeSelection(tenders)] } }),
     );

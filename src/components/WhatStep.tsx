@@ -4,7 +4,14 @@ import { getMenu } from '../api/flexischools';
 import { getFulfillmentDatesFor } from '../api/lookup';
 import type { FulfillmentDate, Menu, MenuItem, Student, StudentService } from '../api/types';
 import { describeOrders, type ExistingOrders } from '../engine/orders';
-import { formatMoney, missingChoices, splitName, type Selection } from '../engine/pricing';
+import {
+  describePrice,
+  formatMoney,
+  missingChoices,
+  orderAmount,
+  splitName,
+  type Selection,
+} from '../engine/pricing';
 import { formatDayMonth, formatShort, WEEKDAYS, weekdayOf } from '../engine/schedule';
 import {
   bagFor,
@@ -334,7 +341,7 @@ export default function WhatStep({
 
       {dayDates.length > 1 && (
         <div className="field">
-          <span className="field__label" id="date-chips-label">
+          <span className="visually-hidden" id="date-chips-label">
             Lunch for
           </span>
           <div className="dates" role="group" aria-labelledby="date-chips-label">
@@ -447,9 +454,8 @@ export default function WhatStep({
           <p className="hint" style={{ marginBottom: '1rem' }}>
             {ref.date === undefined ? (
               <>
-                Showing the {serviceName} menu for {formatShort(menuDate)}
-                {dayDates.length > 1 ? `, the first ${dayName}` : ''}. Specials change from day to
-                day; every date gets checked before anything is ordered.
+                {serviceName} menu for {formatShort(menuDate)}.
+                {dayDates.length > 1 && ` Other ${dayName}s may differ.`}
               </>
             ) : own ? (
               <>
@@ -459,7 +465,7 @@ export default function WhatStep({
                   className="link-button"
                   onClick={() => onChange(setBag(bags, ref, []))}
                 >
-                  Same as every {dayName}
+                  Use the {dayName} lunch
                 </button>
                 {' · '}
                 <button type="button" className="link-button" onClick={() => onSkipDate(menuDate)}>
@@ -468,8 +474,8 @@ export default function WhatStep({
               </>
             ) : (
               <>
-                Showing the {serviceName} menu for {formatShort(menuDate)}. This date gets every{' '}
-                {dayName}’s lunch; change anything here to give it its own.{' '}
+                {formatShort(menuDate)} gets the {dayName} lunch. Change anything to give it its
+                own.{' '}
                 <button type="button" className="link-button" onClick={() => onSkipDate(menuDate)}>
                   Skip this date
                 </button>
@@ -515,7 +521,7 @@ export default function WhatStep({
                       <span className="menu-item__title">{title}</span>
                       {chosen && <span className="badge">{chosen.quantity}</span>}
                     </span>
-                    <span className="menu-item__price">{formatMoney(item.itemPrice)}</span>
+                    <span className="menu-item__price">{describePrice(item)}</span>
                     {detail && <span className="menu-item__detail">{detail}</span>}
                     {(soldOut || item.optionSets.length > 0) && (
                       <span className="menu-item__meta">
@@ -558,6 +564,13 @@ export default function WhatStep({
         >
           Check every date
         </button>
+        {/* on a phone the bag is far below the menu, so the bar says what a tap just did */}
+        <span className="actions__bag" aria-live="polite">
+          {!anyFood
+            ? 'Add food first'
+            : items.length > 0 &&
+              `${items.length} ${items.length === 1 ? 'item' : 'items'} · ${formatMoney(orderAmount(items))}`}
+        </span>
         {missing.length > 0 && anyFood && (
           <span className="hint">
             Nothing yet for {describeMissing(missing, dates)}, so those dates are left out.

@@ -146,7 +146,27 @@ describe('ItemDialog', () => {
     );
     expect(screen.getByText('Strawberry')).toBeInTheDocument();
     expect(screen.queryByText('Old flavour')).not.toBeInTheDocument();
-    expect(document.querySelector('.dialog__price')).toHaveTextContent(/^\$0\.00$/);
+    // Nothing left to say above the options: a $0 cup is priced by its flavours, on the button.
+    expect(document.querySelector('.dialog__price')).toBeNull();
+  });
+
+  it('heads an item priced by the option it needs with what it costs from', () => {
+    renderDialog(
+      makeItem({
+        ...yoghurt,
+        name: 'Build-Your-Own Sandwich',
+        optionSets: [
+          flavourSet({
+            name: 'Bread',
+            minQuantity: 1,
+            maxQuantity: 1,
+            optionSetRenderType: 1,
+            options: [option('white', 'White', 4.5), option('wrap', 'Wrap', 4)],
+          }),
+        ],
+      }),
+    );
+    expect(document.querySelector('.dialog__price')).toHaveTextContent(/^from \$4\.00$/);
   });
 
   it('carries the answers to the canteen’s questions', async () => {
@@ -232,7 +252,7 @@ describe('ItemDialog', () => {
     const dialog = renderDialog(
       makeItem({ ...yoghurt, optionSets: [], description: '<p>Two tenders  with sauce</p>' }),
     );
-    expect(screen.getByText('· Two tenders with sauce')).toBeInTheDocument();
+    expect(screen.getByText('Two tenders with sauce')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(dialog.onClose).toHaveBeenCalled();

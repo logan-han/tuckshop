@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { describeError } from '../api/errors';
-import { cancelOrder, getOrderHistory } from '../api/flexischools';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { describeError, needsSignIn } from '../api/errors';
+import { ApiError, cancelOrder, getOrderHistory } from '../api/flexischools';
 import type { OrderHistoryGroup } from '../api/types';
 import { formatMoney } from '../engine/pricing';
 import { addDays, dateOf, formatShort, todayIso } from '../engine/schedule';
 
 interface Props {
+  /** Whether the account has just the one child, so each order need not name them. */
+  oneChild?: boolean;
   onError: (error: unknown) => void;
   onChanged: () => void;
 }
@@ -21,10 +23,22 @@ async function fetchUpcoming(): Promise<OrderHistoryGroup[]> {
   return [...history.presentOrders].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-export default function UpcomingOrders({ onError, onChanged }: Props) {
+/** Why a cancellation failed; a refusal is most likely an order past its cut-off. */
+function describeRefusal(error: unknown, label: string): string {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return `Flexischools would not cancel ${label}. It may be past the day’s cut-off.`;
+  }
+  return describeError(error);
+}
+
+export default function UpcomingOrders({ oneChild = false, onError, onChanged }: Props) {
   const [groups, setGroups] = useState<OrderHistoryGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  /** The order whose Cancel was pressed, waiting on a yes. One at a time. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+  /** The order whose Cancel button gets focus back once it is shown again. */
+  const refocus = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,7 +68,7 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
   }, [onError]);
 
   async function cancel(orderKey: string, label: string) {
-    if (!window.confirm(`Cancel ${label}? Flexischools refunds it to your wallet.`)) return;
+    setConfirming(null);
     setBusyKey(orderKey);
     setError(null);
     try {
@@ -63,10 +77,16 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
       onChanged();
     } catch (e) {
       onError(e);
-      setError(describeError(e));
+      if (!needsSignIn(e)) setError(describeRefusal(e, label));
+      refocus.current = orderKey;
     } finally {
       setBusyKey(null);
     }
+  }
+
+  function keep(orderKey: string) {
+    refocus.current = orderKey;
+    setConfirming(null);
   }
 
   const live = (groups ?? []).map((group) => ({
@@ -76,6 +96,8 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
   const total = live
     .flatMap((g) => g.orders)
     .filter((o) => !o.orderState.startsWith('Cancelled')).length;
+  const named =
+    !oneChild || new Set(live.flatMap((g) => g.orders.map((o) => o.studentKey.value))).size > 1;
 
   return (
     <section aria-labelledby="orders-title">
@@ -85,8 +107,8 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
         </h2>
       </div>
       <p className="lede">
-        Everything placed for the next six months, from this app or from Flexischools itself.
-        Cancelling refunds the wallet straight away, right up to the day’s cut-off.
+        Orders for the next six months, placed here or on Flexischools. Cancelling refunds the
+        wallet, up to the day’s cut-off.
       </p>
       {error && (
         <p className="notice notice--bad" role="alert">
@@ -107,25 +129,57 @@ export default function UpcomingOrders({ onError, onChanged }: Props) {
                   `${i.quantityOrdered > 1 ? `${i.quantityOrdered} × ` : ''}${i.itemDisplayName.split(' - ')[0]}`,
               )
               .join(', ');
-            const label = `${order.studentName}’s ${order.supplierServiceName.trim()} on ${formatShort(dateOf(order.dueDate))}`;
+            const key = order.orderKey.value;
+            const date = formatShort(dateOf(order.dueDate));
+            const label = `${named ? `${order.studentName}’s ` : 'the '}${order.supplierServiceName.trim()} on ${date}`;
             return (
-              <li className="order" key={order.orderKey.value} data-cancelled={cancelled}>
-                <span className="order__date">{formatShort(dateOf(order.dueDate))}</span>
+              <li className="order" key={key} data-cancelled={cancelled}>
+                <span className="order__date">{date}</span>
                 <span className="order__details">
-                  <strong>{order.studentName}</strong> · {items}
+                  {named && (
+                    <>
+                      <strong>{order.studentName}</strong> ·{' '}
+                    </>
+                  )}
+                  {items}
                   <span className="order__items"> · {formatMoney(order.orderTotal)}</span>
                 </span>
                 <span className="order__action">
                   {cancelled ? (
                     <span className="hint">Cancelled</span>
+                  ) : confirming === key ? (
+                    <>
+                      <button
+                        type="button"
+                        className="button button--danger button--small"
+                        aria-label={`Yes, cancel ${label}`}
+                        autoFocus
+                        onClick={() => cancel(key, label)}
+                      >
+                        Yes, cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--quiet button--small"
+                        onClick={() => keep(key)}
+                      >
+                        Keep
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
                       className="button button--danger button--small"
                       disabled={busyKey !== null}
-                      onClick={() => cancel(order.orderKey.value, label)}
+                      ref={(button) => {
+                        if (button && refocus.current === key) {
+                          refocus.current = null;
+                          button.focus();
+                        }
+                      }}
+                      onClick={() => setConfirming(key)}
                     >
-                      {busyKey === order.orderKey.value ? 'Cancelling…' : 'Cancel'}
+                      {busyKey === key ? 'Cancelling…' : 'Cancel'}
                     </button>
                   )}
                 </span>
